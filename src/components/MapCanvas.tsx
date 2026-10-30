@@ -18,21 +18,46 @@ interface MapCanvasProps {
   isLoadingWeather: boolean;
 }
 
+// Built-in style specifications with guaranteed high-reliability tile servers
 export const BASEMAP_STYLES = {
   cartoDark: {
     name: 'Carto Dark Matter',
-    url: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/about-carto/">CARTO</a> | <a href="https://earthquake.usgs.gov">USGS</a> | <a href="https://open-meteo.com">Open-Meteo</a>',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> | <a href="https://open-meteo.com" target="_blank">Open-Meteo</a>',
+    spec: {
+      version: 8 as const,
+      sources: {
+        'carto-dark': {
+          type: 'raster' as const,
+          tiles: [
+            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+          ],
+          tileSize: 256,
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: 'carto-dark-layer',
+          type: 'raster' as const,
+          source: 'carto-dark',
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    },
   },
   openFreeMapDark: {
     name: 'OpenFreeMap Dark',
-    url: 'https://tiles.openfreemap.org/styles/dark',
-    attribution: '© <a href="https://openfreemap.org">OpenFreeMap</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov">USGS</a> | <a href="https://open-meteo.com">Open-Meteo</a>',
+    attribution: '&copy; <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a>',
+    spec: 'https://tiles.openfreemap.org/styles/dark',
   },
   openFreeMapLiberty: {
     name: 'OpenFreeMap Liberty',
-    url: 'https://tiles.openfreemap.org/styles/liberty',
-    attribution: '© <a href="https://openfreemap.org">OpenFreeMap</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov">USGS</a> | <a href="https://open-meteo.com">Open-Meteo</a>',
+    attribution: '&copy; <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a>',
+    spec: 'https://tiles.openfreemap.org/styles/liberty',
   },
 };
 
@@ -54,34 +79,58 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const [activeStyleKey, setActiveStyleKey] = useState<keyof typeof BASEMAP_STYLES>('cartoDark');
   const [showStyleMenu, setShowStyleMenu] = useState(false);
 
-  // Helper to add data sources and layers safely
+  // Storing latest props in refs to avoid stale closures during map lifecycle
+  const filteredFeaturesRef = useRef(filteredFeatures);
+  filteredFeaturesRef.current = filteredFeatures;
+
+  const topNEventsRef = useRef(topNEvents);
+  topNEventsRef.current = topNEvents;
+
+  const selectedEventRef = useRef(selectedEvent);
+  selectedEventRef.current = selectedEvent;
+
+  // Add all seismic and highlight layers safely
   const setupLayers = (map: maplibregl.Map) => {
-    // 1. Add USGS GeoJSON source with clustering enabled
+    // 1. Earthquakes source
     if (!map.getSource('earthquakes')) {
       map.addSource('earthquakes', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: filteredFeatures as any,
+          features: filteredFeaturesRef.current as any,
         },
         cluster: true,
         clusterMaxZoom: 13,
         clusterRadius: 50,
       });
+    } else {
+      const src = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
+      src.setData({
+        type: 'FeatureCollection',
+        features: filteredFeaturesRef.current as any,
+      });
     }
 
-    // 2. Add Top-N / highlighted source for glowing emphasis
+    // 2. Highlighted events source
     if (!map.getSource('highlighted-events')) {
+      const highlights: EarthquakeFeature[] = [];
+      if (selectedEventRef.current) highlights.push(selectedEventRef.current);
+      for (const ev of topNEventsRef.current) {
+        if (!highlights.some(h => String(h.id) === String(ev.id))) {
+          highlights.push(ev);
+        }
+      }
+
       map.addSource('highlighted-events', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: [],
+          features: highlights as any,
         },
       });
     }
 
-    // Layer: Clustered circles
+    // 3. Cluster Circles
     if (!map.getLayer('clusters')) {
       map.addLayer({
         id: 'clusters',
@@ -118,7 +167,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     }
 
-    // Layer: Cluster count labels
+    // 4. Cluster Count Numbers
     if (!map.getLayer('cluster-count')) {
       map.addLayer({
         id: 'cluster-count',
@@ -135,7 +184,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     }
 
-    // Layer: Highlighted halo / pulse ring for Top-N or selected events
+    // 5. Highlight Ring Layer
     if (!map.getLayer('highlighted-glow')) {
       map.addLayer({
         id: 'highlighted-glow',
@@ -143,13 +192,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         source: 'highlighted-events',
         paint: {
           'circle-radius': [
-            'interpolate',
-            ['linear'],
-            ['to-number', ['get', 'mag'], 2],
-            0, 10,
-            3, 16,
-            5, 24,
-            7, 36,
+            'step',
+            ['to-number', ['get', 'mag'], 0],
+            12,
+            2.5,
+            18,
+            4.5,
+            26,
+            6.0,
+            38,
           ],
           'circle-color': '#FF6D6D',
           'circle-opacity': 0.35,
@@ -160,7 +211,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     }
 
-    // Layer: Individual unclustered earthquake points
+    // 6. Individual Earthquake Points
     if (!map.getLayer('unclustered-point')) {
       map.addLayer({
         id: 'unclustered-point',
@@ -171,23 +222,24 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           'circle-color': [
             'step',
             ['to-number', ['get', 'mag'], 0],
-            '#62E8D0', // < 2.5 (Minor)
+            '#62E8D0', // < 2.5 Minor
             2.5,
-            '#FFB45C', // 2.5 - 4.5 (Light)
+            '#FFB45C', // 2.5 - 4.5 Light
             4.5,
-            '#FF8866', // 4.5 - 6.0 (Moderate)
+            '#FF8866', // 4.5 - 6.0 Moderate
             6.0,
-            '#FF6D6D', // >= 6.0 (Severe)
+            '#FF6D6D', // >= 6.0 Severe
           ],
           'circle-radius': [
-            'interpolate',
-            ['linear'],
-            ['to-number', ['get', 'mag'], 2],
-            0, 4.5,
-            2.5, 7.5,
-            4.5, 12,
-            6.5, 18,
-            8.0, 26,
+            'step',
+            ['to-number', ['get', 'mag'], 0],
+            5.5,
+            2.5,
+            8.5,
+            4.5,
+            14,
+            6.0,
+            22,
           ],
           'circle-stroke-width': 1.5,
           'circle-stroke-color': '#FFFFFF',
@@ -208,7 +260,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: currentStyle.url,
+      style: currentStyle.spec as any,
       center: [15, 20],
       zoom: 1.8,
       minZoom: 1,
@@ -227,10 +279,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
 
     map.on('load', () => {
-      setupLayers(map);
-    });
-
-    map.on('style.load', () => {
       setupLayers(map);
     });
 
@@ -257,7 +305,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const feat = e.features[0];
       const coordinates = (feat.geometry as { type: 'Point'; coordinates: [number, number, number] }).coordinates.slice() as [number, number, number];
       
-      const matched = filteredFeatures.find((f) => String(f.id) === String(feat.id || feat.properties?.id));
+      const matched = filteredFeaturesRef.current.find((f) => String(f.id) === String(feat.id || feat.properties?.id));
       if (matched) {
         onSelectEvent(matched);
       } else {
@@ -290,7 +338,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     map.on('mouseenter', 'unclustered-point', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'unclustered-point', () => { map.getCanvas().style.cursor = ''; });
 
-    // Handle window resize
     const handleResize = () => map.resize();
     window.addEventListener('resize', handleResize);
 
@@ -300,12 +347,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       window.removeEventListener('resize', handleResize);
       map.remove();
       mapRef.current = null;
+      setMapLoaded(false);
     };
   }, [activeStyleKey]);
 
-  // Update GeoJSON source when filtered features change
+  // Update GeoJSON source whenever filtered features update
   useEffect(() => {
-    if (!mapRef.current || !mapLoaded) return;
+    if (!mapRef.current) return;
     const source = mapRef.current.getSource('earthquakes') as maplibregl.GeoJSONSource;
     if (source) {
       source.setData({
@@ -317,18 +365,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   // Update Highlighted Top-N or selected events
   useEffect(() => {
-    if (!mapRef.current || !mapLoaded) return;
+    if (!mapRef.current) return;
     const source = mapRef.current.getSource('highlighted-events') as maplibregl.GeoJSONSource;
     if (source) {
       const highlights: EarthquakeFeature[] = [];
       if (selectedEvent) {
         highlights.push(selectedEvent);
       }
-      if (topNEvents.length > 0) {
-        for (const ev of topNEvents) {
-          if (!highlights.some(h => String(h.id) === String(ev.id))) {
-            highlights.push(ev);
-          }
+      for (const ev of topNEvents) {
+        if (!highlights.some(h => String(h.id) === String(ev.id))) {
+          highlights.push(ev);
         }
       }
       source.setData({
@@ -340,7 +386,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   // Handle region presets camera navigation
   useEffect(() => {
-    if (!mapRef.current || !mapLoaded) return;
+    if (!mapRef.current) return;
     const preset = REGION_PRESETS.find((r) => r.id === selectedRegion);
     if (preset) {
       if (preset.id === 'global') {
@@ -392,8 +438,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     <div className="relative w-full h-full flex-1 bg-orbital-bg">
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* Basemap Style Switcher Pill */}
-      <div className="absolute top-4 left-4 z-10 hidden sm:block">
+      {/* Basemap Style Switcher Pill - placed top-right next to zoom controls */}
+      <div className="absolute top-3.5 right-14 z-10 hidden sm:block">
         <div className="relative">
           <button
             onClick={() => setShowStyleMenu(!showStyleMenu)}
@@ -405,7 +451,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           </button>
 
           {showStyleMenu && (
-            <div className="absolute top-9 left-0 bg-orbital-surface border border-orbital-border rounded-lg shadow-2xl p-1 w-48 space-y-0.5 text-xs font-mono z-30">
+            <div className="absolute top-9 right-0 bg-orbital-surface border border-orbital-border rounded-lg shadow-2xl p-1 w-48 space-y-0.5 text-xs font-mono z-30">
               {Object.entries(BASEMAP_STYLES).map(([key, item]) => (
                 <button
                   key={key}
