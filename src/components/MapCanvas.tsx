@@ -18,33 +18,46 @@ interface MapCanvasProps {
   isLoadingWeather: boolean;
 }
 
-// Built-in style specifications with guaranteed high-reliability tile servers
+// Built-in style specifications - completely free, no watermark, no key required
 export const BASEMAP_STYLES = {
-  cartoDark: {
-    name: 'Carto Dark Matter',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank">CARTO</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> | <a href="https://open-meteo.com" target="_blank">Open-Meteo</a>',
+  esriDark: {
+    name: 'Scientific Dark Canvas',
+    attribution: 'Tiles &copy; <a href="https://www.esri.com" target="_blank">Esri</a> &mdash; USGS, NOAA | <a href="https://earthquake.usgs.gov" target="_blank">USGS Hazards</a> | <a href="https://open-meteo.com" target="_blank">Open-Meteo</a>',
     spec: {
       version: 8 as const,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
-        'carto-dark': {
+        'esri-dark-base': {
           type: 'raster' as const,
           tiles: [
-            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
-          maxzoom: 19,
+          maxzoom: 16,
+        },
+        'esri-dark-labels': {
+          type: 'raster' as const,
+          tiles: [
+            'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+          ],
+          tileSize: 256,
+          maxzoom: 16,
         },
       },
       layers: [
         {
-          id: 'carto-dark-layer',
+          id: 'esri-dark-base-layer',
           type: 'raster' as const,
-          source: 'carto-dark',
+          source: 'esri-dark-base',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 16,
+        },
+        {
+          id: 'esri-dark-labels-layer',
+          type: 'raster' as const,
+          source: 'esri-dark-labels',
+          minzoom: 0,
+          maxzoom: 16,
         },
       ],
     },
@@ -76,10 +89,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const weatherMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const [activeStyleKey, setActiveStyleKey] = useState<keyof typeof BASEMAP_STYLES>('cartoDark');
+  const [activeStyleKey, setActiveStyleKey] = useState<keyof typeof BASEMAP_STYLES>('esriDark');
   const [showStyleMenu, setShowStyleMenu] = useState(false);
 
-  // Storing latest props in refs to avoid stale closures during map lifecycle
   const filteredFeaturesRef = useRef(filteredFeatures);
   filteredFeaturesRef.current = filteredFeatures;
 
@@ -89,170 +101,178 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const selectedEventRef = useRef(selectedEvent);
   selectedEventRef.current = selectedEvent;
 
-  // Add all seismic and highlight layers safely
+  // Add all seismic layers with individual try/catch resilience
   const setupLayers = (map: maplibregl.Map) => {
-    // 1. Earthquakes source
-    if (!map.getSource('earthquakes')) {
-      map.addSource('earthquakes', {
-        type: 'geojson',
-        data: {
+    try {
+      // 1. Earthquakes source
+      if (!map.getSource('earthquakes')) {
+        map.addSource('earthquakes', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: filteredFeaturesRef.current as any,
+          },
+          cluster: true,
+          clusterMaxZoom: 13,
+          clusterRadius: 50,
+        });
+      } else {
+        const src = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
+        src.setData({
           type: 'FeatureCollection',
           features: filteredFeaturesRef.current as any,
-        },
-        cluster: true,
-        clusterMaxZoom: 13,
-        clusterRadius: 50,
-      });
-    } else {
-      const src = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
-      src.setData({
-        type: 'FeatureCollection',
-        features: filteredFeaturesRef.current as any,
-      });
-    }
+        });
+      }
 
-    // 2. Highlighted events source
-    if (!map.getSource('highlighted-events')) {
-      const highlights: EarthquakeFeature[] = [];
-      if (selectedEventRef.current) highlights.push(selectedEventRef.current);
-      for (const ev of topNEventsRef.current) {
-        if (!highlights.some(h => String(h.id) === String(ev.id))) {
-          highlights.push(ev);
+      // 2. Highlighted events source
+      if (!map.getSource('highlighted-events')) {
+        const highlights: EarthquakeFeature[] = [];
+        if (selectedEventRef.current) highlights.push(selectedEventRef.current);
+        for (const ev of topNEventsRef.current) {
+          if (!highlights.some(h => String(h.id) === String(ev.id))) {
+            highlights.push(ev);
+          }
+        }
+
+        map.addSource('highlighted-events', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: highlights as any,
+          },
+        });
+      }
+
+      // 3. Cluster Circles
+      if (!map.getLayer('clusters')) {
+        map.addLayer({
+          id: 'clusters',
+          type: 'circle',
+          source: 'earthquakes',
+          filter: ['has', 'point_count'],
+          paint: {
+            'circle-color': [
+              'step',
+              ['get', 'point_count'],
+              '#1B3E52',
+              10,
+              '#2C5369',
+              50,
+              '#3B6978',
+              200,
+              '#FF6D6D',
+            ],
+            'circle-radius': [
+              'step',
+              ['get', 'point_count'],
+              18,
+              10,
+              24,
+              50,
+              30,
+              200,
+              38,
+            ],
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#62E8D0',
+            'circle-stroke-opacity': 0.9,
+          },
+        });
+      }
+
+      // 4. Cluster Count Numbers
+      if (!map.getLayer('cluster-count')) {
+        try {
+          map.addLayer({
+            id: 'cluster-count',
+            type: 'symbol',
+            source: 'earthquakes',
+            filter: ['has', 'point_count'],
+            layout: {
+              'text-field': '{point_count_abbreviated}',
+              'text-size': 12,
+            },
+            paint: {
+              'text-color': '#FFFFFF',
+            },
+          });
+        } catch (symErr) {
+          console.warn('Symbol layer not available in current style, circles indicate clusters', symErr);
         }
       }
 
-      map.addSource('highlighted-events', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: highlights as any,
-        },
-      });
-    }
+      // 5. Highlight Pulse Ring
+      if (!map.getLayer('highlighted-glow')) {
+        map.addLayer({
+          id: 'highlighted-glow',
+          type: 'circle',
+          source: 'highlighted-events',
+          paint: {
+            'circle-radius': [
+              'step',
+              ['to-number', ['get', 'mag'], 0],
+              12,
+              2.5,
+              18,
+              4.5,
+              26,
+              6.0,
+              38,
+            ],
+            'circle-color': '#FF6D6D',
+            'circle-opacity': 0.35,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#FFB45C',
+            'circle-stroke-opacity': 0.9,
+          },
+        });
+      }
 
-    // 3. Cluster Circles
-    if (!map.getLayer('clusters')) {
-      map.addLayer({
-        id: 'clusters',
-        type: 'circle',
-        source: 'earthquakes',
-        filter: ['has', 'point_count'],
-        paint: {
-          'circle-color': [
-            'step',
-            ['get', 'point_count'],
-            '#1B3E52',
-            10,
-            '#2C5369',
-            50,
-            '#3B6978',
-            200,
-            '#FF6D6D',
-          ],
-          'circle-radius': [
-            'step',
-            ['get', 'point_count'],
-            18,
-            10,
-            24,
-            50,
-            30,
-            200,
-            38,
-          ],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#62E8D0',
-          'circle-stroke-opacity': 0.9,
-        },
-      });
-    }
+      // 6. Individual Earthquake Points (High Visibility WebGL circles)
+      if (!map.getLayer('unclustered-point')) {
+        map.addLayer({
+          id: 'unclustered-point',
+          type: 'circle',
+          source: 'earthquakes',
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-color': [
+              'step',
+              ['to-number', ['get', 'mag'], 0],
+              '#62E8D0', // < 2.5 Minor (Teal)
+              2.5,
+              '#FFB45C', // 2.5 - 4.5 Light (Amber)
+              4.5,
+              '#FF8866', // 4.5 - 6.0 Moderate (Orange)
+              6.0,
+              '#FF6D6D', // >= 6.0 Severe (Coral)
+            ],
+            'circle-radius': [
+              'step',
+              ['to-number', ['get', 'mag'], 0],
+              6,
+              2.5,
+              9,
+              4.5,
+              15,
+              6.0,
+              24,
+            ],
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#FFFFFF',
+            'circle-stroke-opacity': 0.9,
+            'circle-opacity': 0.95,
+          },
+        });
+      }
 
-    // 4. Cluster Count Numbers
-    if (!map.getLayer('cluster-count')) {
-      map.addLayer({
-        id: 'cluster-count',
-        type: 'symbol',
-        source: 'earthquakes',
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': '{point_count_abbreviated}',
-          'text-size': 12,
-        },
-        paint: {
-          'text-color': '#FFFFFF',
-        },
-      });
+      setMapLoaded(true);
+    } catch (err) {
+      console.error('Error adding map layers:', err);
     }
-
-    // 5. Highlight Ring Layer
-    if (!map.getLayer('highlighted-glow')) {
-      map.addLayer({
-        id: 'highlighted-glow',
-        type: 'circle',
-        source: 'highlighted-events',
-        paint: {
-          'circle-radius': [
-            'step',
-            ['to-number', ['get', 'mag'], 0],
-            12,
-            2.5,
-            18,
-            4.5,
-            26,
-            6.0,
-            38,
-          ],
-          'circle-color': '#FF6D6D',
-          'circle-opacity': 0.35,
-          'circle-stroke-width': 2.5,
-          'circle-stroke-color': '#FFB45C',
-          'circle-stroke-opacity': 0.9,
-        },
-      });
-    }
-
-    // 6. Individual Earthquake Points
-    if (!map.getLayer('unclustered-point')) {
-      map.addLayer({
-        id: 'unclustered-point',
-        type: 'circle',
-        source: 'earthquakes',
-        filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': [
-            'step',
-            ['to-number', ['get', 'mag'], 0],
-            '#62E8D0', // < 2.5 Minor
-            2.5,
-            '#FFB45C', // 2.5 - 4.5 Light
-            4.5,
-            '#FF8866', // 4.5 - 6.0 Moderate
-            6.0,
-            '#FF6D6D', // >= 6.0 Severe
-          ],
-          'circle-radius': [
-            'step',
-            ['to-number', ['get', 'mag'], 0],
-            5.5,
-            2.5,
-            8.5,
-            4.5,
-            14,
-            6.0,
-            22,
-          ],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-opacity': 0.85,
-          'circle-opacity': 0.9,
-        },
-      });
-    }
-
-    setMapLoaded(true);
   };
 
-  // Initialize MapLibre
+  // Initialize MapLibre instance
   useEffect(() => {
     if (!mapContainer.current) return;
 
@@ -351,7 +371,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     };
   }, [activeStyleKey]);
 
-  // Update GeoJSON source whenever filtered features update
+  // Sync latest earthquakes to MapLibre GeoJSON source
   useEffect(() => {
     if (!mapRef.current) return;
     const source = mapRef.current.getSource('earthquakes') as maplibregl.GeoJSONSource;
@@ -363,7 +383,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     }
   }, [filteredFeatures, mapLoaded, layerMode]);
 
-  // Update Highlighted Top-N or selected events
+  // Sync latest top-N / selected highlights
   useEffect(() => {
     if (!mapRef.current) return;
     const source = mapRef.current.getSource('highlighted-events') as maplibregl.GeoJSONSource;
@@ -451,7 +471,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           </button>
 
           {showStyleMenu && (
-            <div className="absolute top-9 right-0 bg-orbital-surface border border-orbital-border rounded-lg shadow-2xl p-1 w-48 space-y-0.5 text-xs font-mono z-30">
+            <div className="absolute top-9 right-0 bg-orbital-surface border border-orbital-border rounded-lg shadow-2xl p-1 w-52 space-y-0.5 text-xs font-mono z-30">
               {Object.entries(BASEMAP_STYLES).map(([key, item]) => (
                 <button
                   key={key}
