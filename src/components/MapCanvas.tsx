@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { EarthquakeFeature, EarthquakeFeatureCollection, LayerMode, LocationWeather } from '../types';
 import { REGION_PRESETS } from '../constants/regions';
@@ -18,7 +18,6 @@ interface MapCanvasProps {
   isLoadingWeather: boolean;
 }
 
-// Built-in style specifications - completely free, no watermark, no key required
 export const BASEMAP_STYLES = {
   esriDark: {
     name: 'Scientific Dark Canvas',
@@ -86,166 +85,11 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
+  const [_mapLoaded, setMapLoaded] = useState(false);
   const weatherMarkerRef = useRef<maplibregl.Marker | null>(null);
   const [activeStyleKey, setActiveStyleKey] = useState<keyof typeof BASEMAP_STYLES>('esriDark');
   const [showStyleMenu, setShowStyleMenu] = useState(false);
-
-  const filteredFeaturesRef = useRef(filteredFeatures);
-  filteredFeaturesRef.current = filteredFeatures;
-
-  const topNEventsRef = useRef(topNEvents);
-  topNEventsRef.current = topNEvents;
-
-  const selectedEventRef = useRef(selectedEvent);
-  selectedEventRef.current = selectedEvent;
-
-  // Add all seismic layers with robust individual error handling
-  const setupLayers = (map: maplibregl.Map) => {
-    try {
-      const activeFeatures = layerMode === 'weather' ? [] : filteredFeaturesRef.current;
-
-      // 1. Earthquakes source
-      if (!map.getSource('earthquakes')) {
-        map.addSource('earthquakes', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: activeFeatures as any,
-          },
-        });
-      } else {
-        const src = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
-        src.setData({
-          type: 'FeatureCollection',
-          features: activeFeatures as any,
-        });
-      }
-
-      // 2. Highlighted events source
-      if (!map.getSource('highlighted-events')) {
-        const highlights: EarthquakeFeature[] = [];
-        if (selectedEventRef.current) highlights.push(selectedEventRef.current);
-        for (const ev of topNEventsRef.current) {
-          if (!highlights.some(h => String(h.id) === String(ev.id))) {
-            highlights.push(ev);
-          }
-        }
-
-        map.addSource('highlighted-events', {
-          type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: highlights as any,
-          },
-        });
-      }
-
-      // 3. Glowing Atmospheric Halo beneath each epicenter
-      if (!map.getLayer('earthquake-halo')) {
-        map.addLayer({
-          id: 'earthquake-halo',
-          type: 'circle',
-          source: 'earthquakes',
-          paint: {
-            'circle-color': [
-              'step',
-              ['to-number', ['get', 'mag'], 0],
-              '#62E8D0', // < 2.5
-              2.5,
-              '#FFB45C', // 2.5 - 4.5
-              4.5,
-              '#FF8866', // 4.5 - 6.0
-              6.0,
-              '#FF6D6D', // >= 6.0
-            ],
-            'circle-radius': [
-              'step',
-              ['to-number', ['get', 'mag'], 0],
-              10,
-              2.5,
-              15,
-              4.5,
-              22,
-              6.0,
-              34,
-            ],
-            'circle-opacity': 0.3,
-            'circle-blur': 0.6,
-          },
-        });
-      }
-
-      // 4. Highlight Pulse Ring for selected / top-N events
-      if (!map.getLayer('highlighted-glow')) {
-        map.addLayer({
-          id: 'highlighted-glow',
-          type: 'circle',
-          source: 'highlighted-events',
-          paint: {
-            'circle-radius': [
-              'step',
-              ['to-number', ['get', 'mag'], 0],
-              14,
-              2.5,
-              20,
-              4.5,
-              28,
-              6.0,
-              42,
-            ],
-            'circle-color': '#FF6D6D',
-            'circle-opacity': 0.4,
-            'circle-stroke-width': 2.5,
-            'circle-stroke-color': '#FFB45C',
-            'circle-stroke-opacity': 0.95,
-          },
-        });
-      }
-
-      // 5. High-Visibility WebGL Earthquake Circles
-      if (!map.getLayer('unclustered-point')) {
-        map.addLayer({
-          id: 'unclustered-point',
-          type: 'circle',
-          source: 'earthquakes',
-          paint: {
-            'circle-color': [
-              'step',
-              ['to-number', ['get', 'mag'], 0],
-              '#62E8D0', // < 2.5 Minor (Teal)
-              2.5,
-              '#FFB45C', // 2.5 - 4.5 Light (Amber)
-              4.5,
-              '#FF8866', // 4.5 - 6.0 Moderate (Orange)
-              6.0,
-              '#FF6D6D', // >= 6.0 Severe (Coral)
-            ],
-            'circle-radius': [
-              'step',
-              ['to-number', ['get', 'mag'], 0],
-              5.5,
-              2.5,
-              8.5,
-              4.5,
-              13,
-              6.0,
-              22,
-            ],
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#FFFFFF',
-            'circle-stroke-opacity': 0.9,
-            'circle-opacity': 0.95,
-          },
-        });
-      }
-
-      setMapLoaded(true);
-      map.triggerRepaint();
-    } catch (err) {
-      console.error('Error adding map layers:', err);
-    }
-  };
+  const [_mapMoveTick, setMapMoveTick] = useState(0);
 
   // Initialize MapLibre instance
   useEffect(() => {
@@ -274,55 +118,28 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
 
     map.on('load', () => {
-      setupLayers(map);
+      setMapLoaded(true);
+      setMapMoveTick((t) => t + 1);
     });
 
-    map.on('style.load', () => {
-      setupLayers(map);
+    // Re-render projected points on every camera move/zoom
+    map.on('move', () => {
+      setMapMoveTick((t) => t + 1);
     });
 
-    map.on('error', (e) => {
-      console.warn('MapLibre event:', e);
+    map.on('zoom', () => {
+      setMapMoveTick((t) => t + 1);
     });
 
-    // Handle marker click
-    map.on('click', 'unclustered-point', (e: any) => {
-      if (!e.features || !e.features[0]) return;
-      const feat = e.features[0];
-      const coordinates = (feat.geometry as { type: 'Point'; coordinates: [number, number, number] }).coordinates.slice() as [number, number, number];
-      
-      const matched = filteredFeaturesRef.current.find((f) => String(f.id) === String(feat.id || feat.properties?.id));
-      if (matched) {
-        onSelectEvent(matched);
-      } else {
-        onSelectEvent({
-          type: 'Feature',
-          id: feat.id || feat.properties?.id || 'event',
-          geometry: {
-            type: 'Point',
-            coordinates,
-          },
-          properties: feat.properties as any,
-        });
-      }
-      
-      onMapClickCoordinates(coordinates[1], coordinates[0]);
-    });
-
-    // Click anywhere else on map
+    // Click anywhere on map canvas to query weather
     map.on('click', (e: any) => {
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: ['unclustered-point'],
-      });
-      if (features.length === 0) {
-        onMapClickCoordinates(e.lngLat.lat, e.lngLat.lng);
-      }
+      onMapClickCoordinates(e.lngLat.lat, e.lngLat.lng);
     });
 
-    map.on('mouseenter', 'unclustered-point', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'unclustered-point', () => { map.getCanvas().style.cursor = ''; });
-
-    const handleResize = () => map.resize();
+    const handleResize = () => {
+      map.resize();
+      setMapMoveTick((t) => t + 1);
+    };
     window.addEventListener('resize', handleResize);
 
     mapRef.current = map;
@@ -334,41 +151,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       setMapLoaded(false);
     };
   }, [activeStyleKey]);
-
-  // Sync latest earthquakes to MapLibre GeoJSON source
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const source = mapRef.current.getSource('earthquakes') as maplibregl.GeoJSONSource;
-    if (source) {
-      source.setData({
-        type: 'FeatureCollection',
-        features: layerMode === 'weather' ? [] : (filteredFeatures as any),
-      });
-      mapRef.current.triggerRepaint();
-    }
-  }, [filteredFeatures, mapLoaded, layerMode]);
-
-  // Sync latest top-N / selected highlights
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const source = mapRef.current.getSource('highlighted-events') as maplibregl.GeoJSONSource;
-    if (source) {
-      const highlights: EarthquakeFeature[] = [];
-      if (selectedEvent) {
-        highlights.push(selectedEvent);
-      }
-      for (const ev of topNEvents) {
-        if (!highlights.some(h => String(h.id) === String(ev.id))) {
-          highlights.push(ev);
-        }
-      }
-      source.setData({
-        type: 'FeatureCollection',
-        features: layerMode === 'weather' ? [] : (highlights as any),
-      });
-      mapRef.current.triggerRepaint();
-    }
-  }, [selectedEvent, topNEvents, mapLoaded, layerMode]);
 
   // Handle region presets camera navigation
   useEffect(() => {
@@ -389,7 +171,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         });
       }
     }
-  }, [selectedRegion, mapLoaded]);
+  }, [selectedRegion]);
 
   // Handle weather pinpoint marker on map
   useEffect(() => {
@@ -420,11 +202,161 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     }
   }, [selectedWeather]);
 
+  // Compute projected screen coordinates for all filtered earthquake features
+  const projectedEarthquakes = useMemo(() => {
+    if (!mapRef.current || layerMode === 'weather') return [];
+
+    const map = mapRef.current;
+    const width = mapContainer.current?.clientWidth || window.innerWidth;
+    const height = mapContainer.current?.clientHeight || window.innerHeight;
+
+    const visible: Array<{
+      feature: EarthquakeFeature;
+      x: number;
+      y: number;
+      radius: number;
+      color: string;
+      isHighlighted: boolean;
+      isSelected: boolean;
+    }> = [];
+
+    const topIds = new Set(topNEvents.map((e) => String(e.id)));
+    const selectedId = selectedEvent ? String(selectedEvent.id) : null;
+
+    for (const feat of filteredFeatures) {
+      const [lng, lat] = feat.geometry.coordinates;
+      const pt = map.project([lng, lat]);
+
+      // Viewport culling buffer (skip points far outside the canvas)
+      if (pt.x < -60 || pt.x > width + 60 || pt.y < -60 || pt.y > height + 60) {
+        continue;
+      }
+
+      const mag = feat.properties.mag ?? 0;
+      let radius = 5.5;
+      let color = '#62E8D0'; // < 2.5 (Minor)
+
+      if (mag >= 6.0) {
+        radius = 16;
+        color = '#FF6D6D'; // Severe (Coral)
+      } else if (mag >= 4.5) {
+        radius = 11;
+        color = '#FF8866'; // Moderate (Orange)
+      } else if (mag >= 2.5) {
+        radius = 8;
+        color = '#FFB45C'; // Light (Amber)
+      }
+
+      const fid = String(feat.id);
+      const isSelected = selectedId === fid;
+      const isHighlighted = topIds.has(fid);
+
+      visible.push({
+        feature: feat,
+        x: pt.x,
+        y: pt.y,
+        radius,
+        color,
+        isHighlighted,
+        isSelected,
+      });
+    }
+
+    return visible;
+  }, [filteredFeatures, layerMode, _mapMoveTick, selectedEvent, topNEvents]);
+
   return (
-    <div className="relative w-full h-full flex-1 bg-orbital-bg">
+    <div className="relative w-full h-full flex-1 bg-orbital-bg overflow-hidden">
+      {/* MapLibre Canvas Container */}
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* Basemap Style Switcher Pill - placed top-right next to zoom controls */}
+      {/* High-Performance SVG Epicenter Overlay */}
+      <svg
+        className="absolute inset-0 pointer-events-none w-full h-full z-[5]"
+        style={{ overflow: 'hidden' }}
+      >
+        <defs>
+          <radialGradient id="halo-coral" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FF6D6D" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="#FF6D6D" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="halo-orange" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FF8866" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#FF8866" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="halo-amber" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#FFB45C" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#FFB45C" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="halo-teal" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#62E8D0" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#62E8D0" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        {projectedEarthquakes.map((item) => {
+          const fid = String(item.feature.id);
+          const mag = item.feature.properties.mag ?? 0;
+          const haloGrad =
+            mag >= 6.0
+              ? 'url(#halo-coral)'
+              : mag >= 4.5
+              ? 'url(#halo-orange)'
+              : mag >= 2.5
+              ? 'url(#halo-amber)'
+              : 'url(#halo-teal)';
+
+          return (
+            <g
+              key={fid}
+              className="cursor-pointer pointer-events-auto transition-transform hover:scale-125 origin-center"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectEvent(item.feature);
+                const [lng, lat] = item.feature.geometry.coordinates;
+                onMapClickCoordinates(lat, lng);
+              }}
+            >
+              {/* Soft atmospheric glow halo */}
+              <circle
+                cx={item.x}
+                cy={item.y}
+                r={item.radius * 2.2}
+                fill={haloGrad}
+              />
+
+              {/* Glowing Pulse Ring for Selected or Top-N events */}
+              {(item.isSelected || item.isHighlighted) && (
+                <circle
+                  cx={item.x}
+                  cy={item.y}
+                  r={item.radius + 7}
+                  fill="none"
+                  stroke={item.isSelected ? '#62E8D0' : '#FFB45C'}
+                  strokeWidth="2.5"
+                  strokeDasharray="4 2"
+                  className="animate-spin origin-center"
+                  style={{ transformOrigin: `${item.x}px ${item.y}px` }}
+                />
+              )}
+
+              {/* Main Epicenter Core Circle */}
+              <circle
+                cx={item.x}
+                cy={item.y}
+                r={item.radius}
+                fill={item.color}
+                stroke="#FFFFFF"
+                strokeWidth={item.radius >= 11 ? 2 : 1.5}
+                strokeOpacity={0.9}
+                className="transition-all duration-150 drop-shadow-md"
+              />
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Basemap Style Switcher Pill */}
       <div className="absolute top-3.5 right-14 z-10 hidden sm:block">
         <div className="relative">
           <button
