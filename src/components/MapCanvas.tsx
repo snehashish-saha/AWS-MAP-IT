@@ -25,7 +25,6 @@ export const BASEMAP_STYLES = {
     attribution: 'Tiles &copy; <a href="https://www.esri.com" target="_blank">Esri</a> &mdash; USGS, NOAA | <a href="https://earthquake.usgs.gov" target="_blank">USGS Hazards</a> | <a href="https://open-meteo.com" target="_blank">Open-Meteo</a>',
     spec: {
       version: 8 as const,
-      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         'esri-dark-base': {
           type: 'raster' as const,
@@ -62,15 +61,15 @@ export const BASEMAP_STYLES = {
       ],
     },
   },
-  openFreeMapDark: {
-    name: 'OpenFreeMap Dark',
-    attribution: '&copy; <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a>',
-    spec: 'https://tiles.openfreemap.org/styles/dark',
-  },
   openFreeMapLiberty: {
     name: 'OpenFreeMap Liberty',
     attribution: '&copy; <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a>',
     spec: 'https://tiles.openfreemap.org/styles/liberty',
+  },
+  openFreeMapDark: {
+    name: 'OpenFreeMap Dark',
+    attribution: '&copy; <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a>',
+    spec: 'https://tiles.openfreemap.org/styles/dark',
   },
 };
 
@@ -101,26 +100,25 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const selectedEventRef = useRef(selectedEvent);
   selectedEventRef.current = selectedEvent;
 
-  // Add all seismic layers with individual try/catch resilience
+  // Add all seismic layers with robust individual error handling
   const setupLayers = (map: maplibregl.Map) => {
     try {
+      const activeFeatures = layerMode === 'weather' ? [] : filteredFeaturesRef.current;
+
       // 1. Earthquakes source
       if (!map.getSource('earthquakes')) {
         map.addSource('earthquakes', {
           type: 'geojson',
           data: {
             type: 'FeatureCollection',
-            features: filteredFeaturesRef.current as any,
+            features: activeFeatures as any,
           },
-          cluster: true,
-          clusterMaxZoom: 13,
-          clusterRadius: 50,
         });
       } else {
         const src = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
         src.setData({
           type: 'FeatureCollection',
-          features: filteredFeaturesRef.current as any,
+          features: activeFeatures as any,
         });
       }
 
@@ -143,65 +141,42 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         });
       }
 
-      // 3. Cluster Circles
-      if (!map.getLayer('clusters')) {
+      // 3. Glowing Atmospheric Halo beneath each epicenter
+      if (!map.getLayer('earthquake-halo')) {
         map.addLayer({
-          id: 'clusters',
+          id: 'earthquake-halo',
           type: 'circle',
           source: 'earthquakes',
-          filter: ['has', 'point_count'],
           paint: {
             'circle-color': [
               'step',
-              ['get', 'point_count'],
-              '#1B3E52',
-              10,
-              '#2C5369',
-              50,
-              '#3B6978',
-              200,
-              '#FF6D6D',
+              ['to-number', ['get', 'mag'], 0],
+              '#62E8D0', // < 2.5
+              2.5,
+              '#FFB45C', // 2.5 - 4.5
+              4.5,
+              '#FF8866', // 4.5 - 6.0
+              6.0,
+              '#FF6D6D', // >= 6.0
             ],
             'circle-radius': [
               'step',
-              ['get', 'point_count'],
-              18,
+              ['to-number', ['get', 'mag'], 0],
               10,
-              24,
-              50,
-              30,
-              200,
-              38,
+              2.5,
+              15,
+              4.5,
+              22,
+              6.0,
+              34,
             ],
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#62E8D0',
-            'circle-stroke-opacity': 0.9,
+            'circle-opacity': 0.3,
+            'circle-blur': 0.6,
           },
         });
       }
 
-      // 4. Cluster Count Numbers
-      if (!map.getLayer('cluster-count')) {
-        try {
-          map.addLayer({
-            id: 'cluster-count',
-            type: 'symbol',
-            source: 'earthquakes',
-            filter: ['has', 'point_count'],
-            layout: {
-              'text-field': '{point_count_abbreviated}',
-              'text-size': 12,
-            },
-            paint: {
-              'text-color': '#FFFFFF',
-            },
-          });
-        } catch (symErr) {
-          console.warn('Symbol layer not available in current style, circles indicate clusters', symErr);
-        }
-      }
-
-      // 5. Highlight Pulse Ring
+      // 4. Highlight Pulse Ring for selected / top-N events
       if (!map.getLayer('highlighted-glow')) {
         map.addLayer({
           id: 'highlighted-glow',
@@ -211,30 +186,29 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             'circle-radius': [
               'step',
               ['to-number', ['get', 'mag'], 0],
-              12,
+              14,
               2.5,
-              18,
+              20,
               4.5,
-              26,
+              28,
               6.0,
-              38,
+              42,
             ],
             'circle-color': '#FF6D6D',
-            'circle-opacity': 0.35,
+            'circle-opacity': 0.4,
             'circle-stroke-width': 2.5,
             'circle-stroke-color': '#FFB45C',
-            'circle-stroke-opacity': 0.9,
+            'circle-stroke-opacity': 0.95,
           },
         });
       }
 
-      // 6. Individual Earthquake Points (High Visibility WebGL circles)
+      // 5. High-Visibility WebGL Earthquake Circles
       if (!map.getLayer('unclustered-point')) {
         map.addLayer({
           id: 'unclustered-point',
           type: 'circle',
           source: 'earthquakes',
-          filter: ['!', ['has', 'point_count']],
           paint: {
             'circle-color': [
               'step',
@@ -250,15 +224,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             'circle-radius': [
               'step',
               ['to-number', ['get', 'mag'], 0],
-              6,
+              5.5,
               2.5,
-              9,
+              8.5,
               4.5,
-              15,
+              13,
               6.0,
-              24,
+              22,
             ],
-            'circle-stroke-width': 2,
+            'circle-stroke-width': 1.5,
             'circle-stroke-color': '#FFFFFF',
             'circle-stroke-opacity': 0.9,
             'circle-opacity': 0.95,
@@ -267,6 +241,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       }
 
       setMapLoaded(true);
+      map.triggerRepaint();
     } catch (err) {
       console.error('Error adding map layers:', err);
     }
@@ -302,24 +277,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       setupLayers(map);
     });
 
-    // Handle cluster click
-    map.on('click', 'clusters', (e: any) => {
-      const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
-      if (!features[0]) return;
-      const clusterId = features[0].properties?.cluster_id;
-      const source = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
-      
-      source.getClusterExpansionZoom(clusterId).then((zoom) => {
-        const geom = features[0].geometry as { type: 'Point'; coordinates: [number, number] };
-        map.easeTo({
-          center: geom.coordinates,
-          zoom: zoom,
-          duration: 500,
-        });
-      });
+    map.on('style.load', () => {
+      setupLayers(map);
     });
 
-    // Handle unclustered marker click
+    map.on('error', (e) => {
+      console.warn('MapLibre event:', e);
+    });
+
+    // Handle marker click
     map.on('click', 'unclustered-point', (e: any) => {
       if (!e.features || !e.features[0]) return;
       const feat = e.features[0];
@@ -346,15 +312,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     // Click anywhere else on map
     map.on('click', (e: any) => {
       const features = map.queryRenderedFeatures(e.point, {
-        layers: ['clusters', 'unclustered-point'],
+        layers: ['unclustered-point'],
       });
       if (features.length === 0) {
         onMapClickCoordinates(e.lngLat.lat, e.lngLat.lng);
       }
     });
 
-    map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
     map.on('mouseenter', 'unclustered-point', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'unclustered-point', () => { map.getCanvas().style.cursor = ''; });
 
@@ -380,6 +344,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         type: 'FeatureCollection',
         features: layerMode === 'weather' ? [] : (filteredFeatures as any),
       });
+      mapRef.current.triggerRepaint();
     }
   }, [filteredFeatures, mapLoaded, layerMode]);
 
@@ -401,6 +366,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         type: 'FeatureCollection',
         features: layerMode === 'weather' ? [] : (highlights as any),
       });
+      mapRef.current.triggerRepaint();
     }
   }, [selectedEvent, topNEvents, mapLoaded, layerMode]);
 
