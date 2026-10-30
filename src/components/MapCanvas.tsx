@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { EarthquakeFeature, EarthquakeFeatureCollection, LayerMode, LocationWeather } from '../types';
 import { REGION_PRESETS } from '../constants/regions';
 import { getWeatherDescription } from '../services/weather';
+import { Layers } from 'lucide-react';
 
 interface MapCanvasProps {
   data: EarthquakeFeatureCollection | null;
@@ -17,7 +18,23 @@ interface MapCanvasProps {
   isLoadingWeather: boolean;
 }
 
-const OPENFREEMAP_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
+export const BASEMAP_STYLES = {
+  cartoDark: {
+    name: 'Carto Dark Matter',
+    url: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/about-carto/">CARTO</a> | <a href="https://earthquake.usgs.gov">USGS</a> | <a href="https://open-meteo.com">Open-Meteo</a>',
+  },
+  openFreeMapDark: {
+    name: 'OpenFreeMap Dark',
+    url: 'https://tiles.openfreemap.org/styles/dark',
+    attribution: '© <a href="https://openfreemap.org">OpenFreeMap</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov">USGS</a> | <a href="https://open-meteo.com">Open-Meteo</a>',
+  },
+  openFreeMapLiberty: {
+    name: 'OpenFreeMap Liberty',
+    url: 'https://tiles.openfreemap.org/styles/liberty',
+    attribution: '© <a href="https://openfreemap.org">OpenFreeMap</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov">USGS</a> | <a href="https://open-meteo.com">Open-Meteo</a>',
+  },
+};
 
 export const MapCanvas: React.FC<MapCanvasProps> = ({
   filteredFeatures,
@@ -34,47 +51,27 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const weatherMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const [activeStyleKey, setActiveStyleKey] = useState<keyof typeof BASEMAP_STYLES>('cartoDark');
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
 
-  // Initialize MapLibre
-  useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
-
-    const map = new maplibregl.Map({
-      container: mapContainer.current,
-      style: OPENFREEMAP_DARK_STYLE,
-      center: [15, 20],
-      zoom: 1.8,
-      minZoom: 1,
-      maxZoom: 16,
-      attributionControl: false,
-    });
-
-    // Custom attribution
-    map.addControl(
-      new maplibregl.AttributionControl({
-        compact: true,
-        customAttribution: '© <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> | <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> | <a href="https://open-meteo.com" target="_blank">Open-Meteo</a>',
-      }),
-      'bottom-right'
-    );
-
-    // Standard navigation controls (zoom, pitch)
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
-
-    map.on('load', () => {
-      // 1. Add USGS GeoJSON source with clustering enabled
+  // Helper to add data sources and layers safely
+  const setupLayers = (map: maplibregl.Map) => {
+    // 1. Add USGS GeoJSON source with clustering enabled
+    if (!map.getSource('earthquakes')) {
       map.addSource('earthquakes', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: [],
+          features: filteredFeatures as any,
         },
         cluster: true,
         clusterMaxZoom: 13,
-        clusterRadius: 45,
+        clusterRadius: 50,
       });
+    }
 
-      // 2. Add Top-N / highlighted source for glowing emphasis
+    // 2. Add Top-N / highlighted source for glowing emphasis
+    if (!map.getSource('highlighted-events')) {
       map.addSource('highlighted-events', {
         type: 'geojson',
         data: {
@@ -82,8 +79,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           features: [],
         },
       });
+    }
 
-      // Layer: Clustered circles
+    // Layer: Clustered circles
+    if (!map.getLayer('clusters')) {
       map.addLayer({
         id: 'clusters',
         type: 'circle',
@@ -93,32 +92,34 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           'circle-color': [
             'step',
             ['get', 'point_count'],
-            '#122B3A',
-            10,
             '#1B3E52',
-            50,
+            10,
             '#2C5369',
+            50,
+            '#3B6978',
             200,
-            '#42293F',
+            '#FF6D6D',
           ],
           'circle-radius': [
             'step',
             ['get', 'point_count'],
-            16,
+            18,
             10,
-            20,
+            24,
             50,
-            26,
+            30,
             200,
-            32,
+            38,
           ],
-          'circle-stroke-width': 1.5,
+          'circle-stroke-width': 2,
           'circle-stroke-color': '#62E8D0',
-          'circle-stroke-opacity': 0.7,
+          'circle-stroke-opacity': 0.9,
         },
       });
+    }
 
-      // Layer: Cluster count labels
+    // Layer: Cluster count labels
+    if (!map.getLayer('cluster-count')) {
       map.addLayer({
         id: 'cluster-count',
         type: 'symbol',
@@ -126,15 +127,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         filter: ['has', 'point_count'],
         layout: {
           'text-field': '{point_count_abbreviated}',
-          'text-font': ['Open Sans Bold'],
-          'text-size': 11,
+          'text-size': 12,
         },
         paint: {
-          'text-color': '#EDF4F7',
+          'text-color': '#FFFFFF',
         },
       });
+    }
 
-      // Layer: Highlighted halo / pulse ring for Top-N or selected events
+    // Layer: Highlighted halo / pulse ring for Top-N or selected events
+    if (!map.getLayer('highlighted-glow')) {
       map.addLayer({
         id: 'highlighted-glow',
         type: 'circle',
@@ -143,21 +145,23 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           'circle-radius': [
             'interpolate',
             ['linear'],
-            ['coalesce', ['get', 'mag'], 2],
+            ['to-number', ['get', 'mag'], 2],
             0, 10,
-            3, 14,
-            5, 22,
-            7, 34
+            3, 16,
+            5, 24,
+            7, 36,
           ],
           'circle-color': '#FF6D6D',
-          'circle-opacity': 0.25,
-          'circle-stroke-width': 2,
+          'circle-opacity': 0.35,
+          'circle-stroke-width': 2.5,
           'circle-stroke-color': '#FFB45C',
           'circle-stroke-opacity': 0.9,
         },
       });
+    }
 
-      // Layer: Unclustered individual earthquake points
+    // Layer: Individual unclustered earthquake points
+    if (!map.getLayer('unclustered-point')) {
       map.addLayer({
         id: 'unclustered-point',
         type: 'circle',
@@ -166,99 +170,138 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         paint: {
           'circle-color': [
             'step',
-            ['coalesce', ['get', 'mag'], 0],
-            '#62E8D0',
+            ['to-number', ['get', 'mag'], 0],
+            '#62E8D0', // < 2.5 (Minor)
             2.5,
-            '#FFB45C',
+            '#FFB45C', // 2.5 - 4.5 (Light)
             4.5,
-            '#FF8866',
+            '#FF8866', // 4.5 - 6.0 (Moderate)
             6.0,
-            '#FF6D6D',
+            '#FF6D6D', // >= 6.0 (Severe)
           ],
           'circle-radius': [
             'interpolate',
             ['linear'],
-            ['coalesce', ['get', 'mag'], 2],
-            0, 3.5,
-            2.5, 6,
-            4.5, 10,
-            6.5, 17,
-            8.0, 25,
+            ['to-number', ['get', 'mag'], 2],
+            0, 4.5,
+            2.5, 7.5,
+            4.5, 12,
+            6.5, 18,
+            8.0, 26,
           ],
           'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#EDF4F7',
-          'circle-stroke-opacity': 0.7,
-          'circle-opacity': 0.85,
+          'circle-stroke-color': '#FFFFFF',
+          'circle-stroke-opacity': 0.85,
+          'circle-opacity': 0.9,
         },
       });
+    }
 
-      // Click on cluster -> zoom in
-      map.on('click', 'clusters', (e: maplibregl.MapGeoJSONFeature & any) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
-        if (!features[0]) return;
-        const clusterId = features[0].properties?.cluster_id;
-        const source = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
-        
-        source.getClusterExpansionZoom(clusterId).then((zoom) => {
-          const geom = features[0].geometry as { type: 'Point'; coordinates: [number, number] };
-          map.easeTo({
-            center: geom.coordinates,
-            zoom: zoom,
-            duration: 500,
-          });
-        });
-      });
+    setMapLoaded(true);
+  };
 
-      // Click on unclustered earthquake marker
-      map.on('click', 'unclustered-point', (e: maplibregl.MapGeoJSONFeature & any) => {
-        if (!e.features || !e.features[0]) return;
-        const feat = e.features[0];
-        const coordinates = (feat.geometry as { type: 'Point'; coordinates: [number, number, number] }).coordinates.slice() as [number, number, number];
-        
-        const matched = filteredFeatures.find((f) => String(f.id) === String(feat.id || feat.properties?.id));
-        if (matched) {
-          onSelectEvent(matched);
-        } else {
-          onSelectEvent({
-            type: 'Feature',
-            id: feat.id || feat.properties?.id || 'event',
-            geometry: {
-              type: 'Point',
-              coordinates,
-            },
-            properties: feat.properties as any,
-          });
-        }
-        
-        onMapClickCoordinates(coordinates[1], coordinates[0]);
-      });
+  // Initialize MapLibre
+  useEffect(() => {
+    if (!mapContainer.current) return;
 
-      // Click anywhere on map canvas
-      map.on('click', (e: any) => {
-        const features = map.queryRenderedFeatures(e.point, {
-          layers: ['clusters', 'unclustered-point'],
-        });
-        if (features.length === 0) {
-          onMapClickCoordinates(e.lngLat.lat, e.lngLat.lng);
-        }
-      });
+    const currentStyle = BASEMAP_STYLES[activeStyleKey];
 
-      // Cursor changes on hover
-      map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
-      map.on('mouseenter', 'unclustered-point', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'unclustered-point', () => { map.getCanvas().style.cursor = ''; });
-
-      setMapLoaded(true);
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: currentStyle.url,
+      center: [15, 20],
+      zoom: 1.8,
+      minZoom: 1,
+      maxZoom: 16,
+      attributionControl: false,
     });
+
+    map.addControl(
+      new maplibregl.AttributionControl({
+        compact: true,
+        customAttribution: currentStyle.attribution,
+      }),
+      'bottom-right'
+    );
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+
+    map.on('load', () => {
+      setupLayers(map);
+    });
+
+    map.on('style.load', () => {
+      setupLayers(map);
+    });
+
+    // Handle cluster click
+    map.on('click', 'clusters', (e: any) => {
+      const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+      if (!features[0]) return;
+      const clusterId = features[0].properties?.cluster_id;
+      const source = map.getSource('earthquakes') as maplibregl.GeoJSONSource;
+      
+      source.getClusterExpansionZoom(clusterId).then((zoom) => {
+        const geom = features[0].geometry as { type: 'Point'; coordinates: [number, number] };
+        map.easeTo({
+          center: geom.coordinates,
+          zoom: zoom,
+          duration: 500,
+        });
+      });
+    });
+
+    // Handle unclustered marker click
+    map.on('click', 'unclustered-point', (e: any) => {
+      if (!e.features || !e.features[0]) return;
+      const feat = e.features[0];
+      const coordinates = (feat.geometry as { type: 'Point'; coordinates: [number, number, number] }).coordinates.slice() as [number, number, number];
+      
+      const matched = filteredFeatures.find((f) => String(f.id) === String(feat.id || feat.properties?.id));
+      if (matched) {
+        onSelectEvent(matched);
+      } else {
+        onSelectEvent({
+          type: 'Feature',
+          id: feat.id || feat.properties?.id || 'event',
+          geometry: {
+            type: 'Point',
+            coordinates,
+          },
+          properties: feat.properties as any,
+        });
+      }
+      
+      onMapClickCoordinates(coordinates[1], coordinates[0]);
+    });
+
+    // Click anywhere else on map
+    map.on('click', (e: any) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: ['clusters', 'unclustered-point'],
+      });
+      if (features.length === 0) {
+        onMapClickCoordinates(e.lngLat.lat, e.lngLat.lng);
+      }
+    });
+
+    map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
+    map.on('mouseenter', 'unclustered-point', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'unclustered-point', () => { map.getCanvas().style.cursor = ''; });
+
+    // Handle window resize
+    const handleResize = () => map.resize();
+    window.addEventListener('resize', handleResize);
 
     mapRef.current = map;
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [activeStyleKey]);
 
   // Update GeoJSON source when filtered features change
   useEffect(() => {
@@ -332,10 +375,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const desc = getWeatherDescription(selectedWeather.current.weather_code);
       
       el.innerHTML = `
-        <div class="relative flex items-center bg-[#0D1420]/95 text-[#75B9FF] border border-[#75B9FF]/60 px-2 py-1 rounded-full shadow-lg shadow-black/80 font-mono text-[11px] backdrop-blur cursor-pointer hover:border-[#62E8D0] transition">
+        <div class="relative flex items-center bg-[#0D1420]/95 text-[#75B9FF] border border-[#75B9FF]/60 px-2.5 py-1 rounded-full shadow-xl shadow-black/80 font-mono text-[11px] backdrop-blur cursor-pointer hover:border-[#62E8D0] transition">
           <span class="w-2 h-2 rounded-full bg-[#75B9FF] inline-block mr-1.5 animate-pulse"></span>
           <span class="font-bold text-[#EDF4F7]">${selectedWeather.current.temperature.toFixed(1)}°C</span>
-          <span class="text-[10px] text-[#92A3B3] ml-1.5 hidden sm:inline">${desc.label.slice(0, 12)}</span>
+          <span class="text-[10px] text-[#92A3B3] ml-1.5 hidden sm:inline">${desc.label.slice(0, 14)}</span>
         </div>
       `;
 
@@ -348,6 +391,41 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   return (
     <div className="relative w-full h-full flex-1 bg-orbital-bg">
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Basemap Style Switcher Pill */}
+      <div className="absolute top-4 left-4 z-10 hidden sm:block">
+        <div className="relative">
+          <button
+            onClick={() => setShowStyleMenu(!showStyleMenu)}
+            className="flex items-center space-x-1.5 bg-orbital-surface/90 hover:bg-orbital-elevated border border-orbital-border text-orbital-text px-2.5 py-1.5 rounded-lg text-xs font-mono shadow-lg backdrop-blur transition"
+            title="Change Basemap Style"
+          >
+            <Layers size={13} className="text-orbital-teal" />
+            <span>{BASEMAP_STYLES[activeStyleKey].name}</span>
+          </button>
+
+          {showStyleMenu && (
+            <div className="absolute top-9 left-0 bg-orbital-surface border border-orbital-border rounded-lg shadow-2xl p-1 w-48 space-y-0.5 text-xs font-mono z-30">
+              {Object.entries(BASEMAP_STYLES).map(([key, item]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setActiveStyleKey(key as keyof typeof BASEMAP_STYLES);
+                    setShowStyleMenu(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-md transition ${
+                    activeStyleKey === key
+                      ? 'bg-orbital-teal/20 text-orbital-teal font-semibold'
+                      : 'text-orbital-muted hover:text-orbital-text hover:bg-orbital-elevated'
+                  }`}
+                >
+                  {item.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Weather Pin Loading Indicator Pill */}
       {isLoadingWeather && (
