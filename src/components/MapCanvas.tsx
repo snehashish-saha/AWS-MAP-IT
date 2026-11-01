@@ -111,6 +111,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           id: eq.id,
           properties: {
             ...eq.properties,
+            id: eq.id,
             isAlert: alertQuakeIds.has(eq.id),
           },
           geometry: eq.geometry,
@@ -395,6 +396,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         map.addSource('earthquakes', {
           type: 'geojson',
           data: earthquakesGeoJSONRef.current as any,
+          promoteId: 'id',
         });
 
         // Shockwave aura ONLY on active cable exposure alerts
@@ -465,6 +467,18 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               0.95,
               0.35
             ],
+          },
+        });
+
+        // Generous transparent circular hitbox (18px) for effortless clicking on quake points
+        map.addLayer({
+          id: 'earthquakes-hitbox',
+          type: 'circle',
+          source: 'earthquakes',
+          paint: {
+            'circle-radius': 18,
+            'circle-color': '#FFFFFF',
+            'circle-opacity': 0.001,
           },
         });
       }
@@ -559,13 +573,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       map.getCanvas().style.cursor = '';
     });
 
-    // Click on Earthquake
-    map.on('click', 'earthquakes-core', (e) => {
+    // Click on Earthquake (bound to both generous 18px hitbox and visual core)
+    const handleQuakeClick = (e: maplibregl.MapLayerMouseEvent) => {
       if (!e.features || e.features.length === 0) return;
       const feat = e.features[0];
-      const eqMatch = earthquakes.find((eq) => eq.id === feat.id);
+      const qId = feat.id || (feat.properties as any)?.id;
+      const eqMatch = earthquakes.find((eq) => eq.id === qId || String(eq.id) === String(qId));
       if (eqMatch) {
-        const alertMatch = alerts.find((a) => a.earthquake.id === eqMatch.id);
+        const alertMatch = alerts.find((a) => a.earthquake.id === eqMatch.id || String(a.earthquake.id) === String(eqMatch.id));
         if (alertMatch) {
           onSelectEntity({
             type: 'exposure_alert',
@@ -578,14 +593,22 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           });
         }
       }
-    });
+    };
 
-    map.on('mouseenter', 'earthquakes-core', () => {
+    map.on('click', 'earthquakes-hitbox', handleQuakeClick);
+    map.on('click', 'earthquakes-core', handleQuakeClick);
+
+    const handleQuakeEnter = () => {
       map.getCanvas().style.cursor = 'pointer';
-    });
-    map.on('mouseleave', 'earthquakes-core', () => {
+    };
+    const handleQuakeLeave = () => {
       map.getCanvas().style.cursor = '';
-    });
+    };
+
+    map.on('mouseenter', 'earthquakes-hitbox', handleQuakeEnter);
+    map.on('mouseleave', 'earthquakes-hitbox', handleQuakeLeave);
+    map.on('mouseenter', 'earthquakes-core', handleQuakeEnter);
+    map.on('mouseleave', 'earthquakes-core', handleQuakeLeave);
   };
 
   // Sync Dynamic Data Updates
@@ -656,6 +679,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     toggle('landing-points-glow', layerVisibility.landingPoints);
     toggle('landing-points-circle', layerVisibility.landingPoints);
     toggle('aws-regions-core', layerVisibility.awsRegions);
+    toggle('earthquakes-hitbox', layerVisibility.earthquakes);
     toggle('earthquakes-shockwave', layerVisibility.earthquakes);
     toggle('earthquakes-core', layerVisibility.earthquakes);
     toggle('proximity-vectors-line', layerVisibility.earthquakes && layerVisibility.cables);
@@ -668,6 +692,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
     const magVal = minMagnitude;
     const magExpr: any = ['>=', ['coalesce', ['get', 'mag'], 0], magVal];
+
+    if (map.getLayer('earthquakes-hitbox')) {
+      if (layerVisibility.alertsOnly) {
+        map.setFilter('earthquakes-hitbox', ['all', ['==', ['get', 'isAlert'], true], magExpr] as any);
+      } else {
+        map.setFilter('earthquakes-hitbox', magExpr as any);
+      }
+    }
 
     if (map.getLayer('earthquakes-core')) {
       if (layerVisibility.alertsOnly) {
