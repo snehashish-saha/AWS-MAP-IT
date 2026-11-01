@@ -101,27 +101,12 @@ TerraPulse SUBSEA enforces strict scientific integrity and transparent screening
 
 ---
 
-## 🎬 3-Minute Demo Video Script & Storyboard
-
-This 3-minute sequence matches our built-in **Story Mode**:
-
-| Time | Visual / Screen Action | Voiceover Narrative |
-| :--- | :--- | :--- |
-| **0:00 - 0:25** | Cinematic globe rotates with glowing cyan cables; camera dives to Atlantic Ocean. | *"We think the Cloud lives in the sky. In reality, over 95% of all global data and AWS inter-region traffic flows through glass fiber cables resting on the dark seabed. Welcome to TerraPulse SUBSEA."* |
-| **0:25 - 0:55** | Clicking **Story Mode** $\rightarrow$ Chapter 2: Luzon Strait (Taiwan/Philippines). | *"On December 26, 2006, an M7.1 earthquake off Taiwan triggered undersea avalanches that severed 8 submarine cables simultaneously, crippling East Asian banking for weeks. This proved the physical vulnerability of our digital world."* |
-| **0:55 - 1:30** | Story Mode Chapter 3: Camera flies to **Bab-el-Mandeb & Red Sea**. | *"Here in the Red Sea, 16 major intercontinental cable systems are squeezed into a waterway just 20 kilometers wide. TerraPulse SUBSEA tracks the route concentration in these critical chokepoints."* |
-| **1:30 - 2:05** | Clicking **Exposure Alert** from the live feed $\rightarrow$ camera flies to an offshore epicenter; dashed proximity line renders to the nearest cable with distance counter in km. | *"Using live USGS streaming feeds, our Turf.js spatial engine calculates the exact distance from offshore epicenters to charted cables. Here, an offshore tremor is flagged as a potential physical exposure observation 34 kilometers from the AAE-1 cable."* |
-| **2:05 - 2:35** | Clicking an **AWS Region** (e.g. `ap-southeast-1` Singapore or `eu-central-1` Frankfurt). | *"We plot 28 key AWS Regions alongside coastal landing stations, demonstrating how cloud infrastructure physically ties into regional subsea landing hubs."* |
-| **2:35 - 3:00** | Pressing `⌘K` to open the Command Palette, searching cables, and showing the Amazon Location Service and S3 hosting architecture slide. | *"TerraPulse SUBSEA runs on Amazon Location Service and Amazon S3 static hosting, delivering sub-second spatial intelligence at zero ongoing compute cost. Check out our live demo and open-source repo."* |
-
----
-
 ## 🚀 Local Development & Quickstart
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/snehashish-saha/AWS-MAP-IT.git
-cd terrapulse-subsea
+cd AWS-MAP-IT
 
 # 2. Install dependencies
 npm install
