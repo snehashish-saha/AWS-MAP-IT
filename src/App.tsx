@@ -49,15 +49,11 @@ export function App() {
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);
   const [activeChokepoint, setActiveChokepoint] = useState<ChokepointPreset | null>(null);
   const [storyStepIndex, setStoryStepIndex] = useState<number | null>(null);
-  const [projection, setProjection] = useState<ProjectionMode>(() => {
-    return (localStorage.getItem('TERRAPULSE_PROJECTION') as ProjectionMode) || 'globe';
-  });
+  // Default to 2D Planar map on initial page load as requested
+  const [projection, setProjection] = useState<ProjectionMode>('mercator');
 
   const handleToggleProjection = useCallback((mode: ProjectionMode) => {
     setProjection(mode);
-    try {
-      localStorage.setItem('TERRAPULSE_PROJECTION', mode);
-    } catch {}
   }, []);
 
   // Modals & Panels State
@@ -290,8 +286,6 @@ export function App() {
         onSelectChokepoint={handleSelectChokepoint}
         onStartStoryMode={handleStartStoryMode}
         isStoryModeActive={storyStepIndex !== null}
-        projection={projection}
-        onToggleProjection={handleToggleProjection}
       />
 
       {/* 6. Story Mode Guided Tour Overlay */}

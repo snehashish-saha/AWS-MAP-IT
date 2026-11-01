@@ -72,7 +72,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   minMagnitude = 4.0,
   amazonLocationKey,
   amazonLocationRegion = 'us-east-1',
-  projection = 'globe',
+  projection = 'mercator',
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -186,6 +186,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       if (projection === 'globe') {
         try {
           map.setProjection({ type: 'globe' });
+          map.setCenter([20, 0]);
+          map.setPitch(0);
+          map.setZoom(1.65);
         } catch (e) {
           console.warn('Initial globe projection notice:', e);
         }
@@ -316,7 +319,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           },
         });
 
-        // Transparent generous hitbox layer (16-24px) for effortless mouse targeting & clicking
+        // Transparent focused hitbox layer (6-10px) preventing adjacent parallel cable overlap
         map.addLayer({
           id: 'cables-hitbox',
           type: 'line',
@@ -329,9 +332,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             'line-color': '#FFFFFF',
             'line-width': [
               'interpolate', ['linear'], ['zoom'],
-              1.5, 14,
-              5, 18,
-              10, 24
+              1.5, 6,
+              5, 8,
+              10, 10
             ],
             'line-opacity': 0.001,
           },
@@ -512,11 +515,78 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   };
 
   const setupMapInteractions = (map: maplibregl.Map) => {
-    // Click on Cable (bound to both generous hitbox and visual line for 100% reliable clicks)
-    const handleCableClick = (e: maplibregl.MapLayerMouseEvent) => {
+    // Laser-precise Euclidean pixel distance from click coordinate to a cable's geometry
+    const getMinDistanceToCable = (
+      feat: maplibregl.MapGeoJSONFeature,
+      cursorPt: { x: number; y: number }
+    ): number => {
+      const geom = feat.geometry;
+      if (!geom) return Infinity;
+
+      let minDistance = Infinity;
+
+      const testSegment = (p1: [number, number], p2: [number, number]) => {
+        try {
+          const sp1 = map.project(p1);
+          const sp2 = map.project(p2);
+          const dx = sp2.x - sp1.x;
+          const dy = sp2.y - sp1.y;
+          const l2 = dx * dx + dy * dy;
+
+          if (l2 === 0) {
+            const d = Math.hypot(cursorPt.x - sp1.x, cursorPt.y - sp1.y);
+            if (d < minDistance) minDistance = d;
+            return;
+          }
+
+          let t = ((cursorPt.x - sp1.x) * dx + (cursorPt.y - sp1.y) * dy) / l2;
+          t = Math.max(0, Math.min(1, t));
+          const projX = sp1.x + t * dx;
+          const projY = sp1.y + t * dy;
+          const d = Math.hypot(cursorPt.x - projX, cursorPt.y - projY);
+          if (d < minDistance) minDistance = d;
+        } catch {
+          // Ignore projection out-of-bounds in 3D globe horizon
+        }
+      };
+
+      if (geom.type === 'LineString') {
+        const coords = geom.coordinates as [number, number][];
+        for (let i = 0; i < coords.length - 1; i++) {
+          testSegment(coords[i], coords[i + 1]);
+        }
+      } else if (geom.type === 'MultiLineString') {
+        const lines = geom.coordinates as [number, number][][];
+        for (const line of lines) {
+          for (let i = 0; i < line.length - 1; i++) {
+            testSegment(line[i], line[i + 1]);
+          }
+        }
+      }
+
+      return minDistance;
+    };
+
+    // Click on Cable (laser precision resolves the closest cable among overlapping lines)
+    const handleCableClick = (e: { point?: maplibregl.Point; originalEvent?: MouseEvent; features?: maplibregl.MapGeoJSONFeature[] }) => {
       if (!e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const props = feat.properties as any;
+      if (e.originalEvent) (e.originalEvent as any).__entitySelected = true;
+
+      let bestFeat = e.features[0];
+
+      // If multiple parallel/adjacent cables intersect the click area, pick the one closest to cursor
+      if (e.point && e.features.length > 1) {
+        let bestDist = Infinity;
+        for (const feat of e.features) {
+          const dist = getMinDistanceToCable(feat, e.point);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestFeat = feat;
+          }
+        }
+      }
+
+      const props = bestFeat.properties as any;
       onSelectEntityRef.current({
         type: 'cable',
         data: {
@@ -533,12 +603,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     };
 
-    map.on('click', 'cables-hitbox', handleCableClick);
-    map.on('click', 'cables-line', handleCableClick);
+    map.on('click', 'cables-hitbox', handleCableClick as any);
+    map.on('click', 'cables-line', handleCableClick as any);
 
     // Click on Landing Point
     map.on('click', 'landing-points-circle', (e) => {
       if (!e.features || e.features.length === 0) return;
+      if (e.originalEvent) (e.originalEvent as any).__entitySelected = true;
       const feat = e.features[0];
       const props = feat.properties as any;
       onSelectEntityRef.current({
@@ -553,6 +624,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     // Click on AWS Region
     map.on('click', 'aws-regions-core', (e) => {
       if (!e.features || e.features.length === 0) return;
+      if (e.originalEvent) (e.originalEvent as any).__entitySelected = true;
       const feat = e.features[0];
       const props = feat.properties as any;
       onSelectEntityRef.current({
@@ -570,8 +642,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     });
 
     // Click on Earthquake or Proximity Vector
-    const handleQuakeClick = (e: maplibregl.MapLayerMouseEvent | { features?: maplibregl.MapGeoJSONFeature[] }) => {
+    const handleQuakeClick = (e: { point?: maplibregl.Point; originalEvent?: MouseEvent; features?: maplibregl.MapGeoJSONFeature[] }) => {
       if (!e.features || e.features.length === 0) return;
+      if (e.originalEvent) (e.originalEvent as any).__entitySelected = true;
       const feat = e.features[0];
       const qId = feat.id || (feat.properties as any)?.id;
       const currentQuakes = earthquakesRef.current;
@@ -649,14 +722,17 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     map.on('click', 'earthquakes-shockwave', handleQuakeClick as any);
     map.on('click', 'proximity-vectors-line', handleQuakeClick as any);
 
-    // Generous bounding-box map click (18px radius) guarantees instant capture even on fast or slightly off-center clicks
+    // Broad map click fallback: activates if click occurred slightly off-target (e.g. 2-8px)
     map.on('click', (e) => {
-      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
-        [e.point.x - 18, e.point.y - 18],
-        [e.point.x + 18, e.point.y + 18],
+      // If a layer-specific handler already resolved the clicked entity, skip
+      if ((e.originalEvent as any)?.__entitySelected) return;
+
+      const searchBbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - 10, e.point.y - 10],
+        [e.point.x + 10, e.point.y + 10],
       ];
 
-      const quakeFeatures = map.queryRenderedFeatures(bbox, {
+      const quakeFeatures = map.queryRenderedFeatures(searchBbox, {
         layers: [
           'earthquakes-hitbox',
           'earthquakes-core',
@@ -665,17 +741,52 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         ].filter((id) => !!map.getLayer(id)),
       });
 
-      if (quakeFeatures && quakeFeatures.length > 0) {
-        handleQuakeClick({ ...e, features: quakeFeatures } as any);
-        return;
-      }
-
-      const cableFeatures = map.queryRenderedFeatures(bbox, {
-        layers: ['cables-hitbox', 'cables-line'].filter((id) => !!map.getLayer(id)),
+      const cableFeatures = map.queryRenderedFeatures(searchBbox, {
+        layers: ['cables-line', 'cables-hitbox'].filter((id) => !!map.getLayer(id)),
       });
 
+      // Calculate minimal pixel distance to quake vs cable
+      let minQuakeDist = Infinity;
+      let bestQuakeFeat: maplibregl.MapGeoJSONFeature | null = null;
+      if (quakeFeatures && quakeFeatures.length > 0) {
+        for (const qf of quakeFeatures) {
+          if (qf.geometry.type === 'Point') {
+            try {
+              const coords = qf.geometry.coordinates as [number, number];
+              const pt = map.project(coords);
+              const d = Math.hypot(e.point.x - pt.x, e.point.y - pt.y);
+              if (d < minQuakeDist) {
+                minQuakeDist = d;
+                bestQuakeFeat = qf;
+              }
+            } catch {}
+          } else {
+            const d = getMinDistanceToCable(qf, e.point);
+            if (d < minQuakeDist) {
+              minQuakeDist = d;
+              bestQuakeFeat = qf;
+            }
+          }
+        }
+      }
+
+      let minCableDist = Infinity;
+      let bestCableFeat: maplibregl.MapGeoJSONFeature | null = null;
       if (cableFeatures && cableFeatures.length > 0) {
-        handleCableClick({ ...e, features: cableFeatures } as any);
+        for (const cf of cableFeatures) {
+          const d = getMinDistanceToCable(cf, e.point);
+          if (d < minCableDist) {
+            minCableDist = d;
+            bestCableFeat = cf;
+          }
+        }
+      }
+
+      // Whichever entity is physically closer to the user's cursor wins!
+      if (minCableDist < minQuakeDist && bestCableFeat) {
+        handleCableClick({ point: e.point, features: [bestCableFeat] });
+      } else if (bestQuakeFeat) {
+        handleQuakeClick({ point: e.point, features: [bestQuakeFeat] });
       }
     });
 
@@ -817,11 +928,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       try {
         if (projection === 'globe') {
           map.setProjection({ type: 'globe' });
-          // Smooth orbital camera transition
+          // Smooth orbital camera transition centered on the globe
           if (map.getZoom() < 3.5) {
             map.easeTo({
-              zoom: 1.8,
-              pitch: 25,
+              center: [20, 0],
+              zoom: 1.65,
+              pitch: 0,
+              bearing: 0,
               duration: 1200,
               essential: true,
             });
@@ -830,8 +943,10 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           map.setProjection({ type: 'mercator' });
           if (map.getZoom() < 3.5) {
             map.easeTo({
+              center: [25, 18],
               zoom: 2.2,
               pitch: 15,
+              bearing: 0,
               duration: 1200,
               essential: true,
             });
@@ -844,6 +959,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   }, [projection]);
 
   // Handle Camera Movement on Chokepoint or Story Step
+  const prevChokepointRef = useRef<ChokepointPreset | null>(activeChokepoint);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapLoaded.current) return;
@@ -866,8 +983,30 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         essential: true,
         duration: 2000,
       });
+    } else if (prevChokepointRef.current !== null && activeChokepoint === null) {
+      // Returned to Global View from a chokepoint preset
+      if (projection === 'globe') {
+        map.flyTo({
+          center: [20, 0],
+          zoom: 1.65,
+          pitch: 0,
+          bearing: 0,
+          essential: true,
+          duration: 1800,
+        });
+      } else {
+        map.flyTo({
+          center: [25, 18],
+          zoom: 2.2,
+          pitch: 15,
+          bearing: 0,
+          essential: true,
+          duration: 1800,
+        });
+      }
     }
-  }, [activeChokepoint, storyStep]);
+    prevChokepointRef.current = activeChokepoint;
+  }, [activeChokepoint, storyStep, projection]);
 
   // Handle Camera Movement on Entity Selection (e.g. Exposure Alert)
   useEffect(() => {

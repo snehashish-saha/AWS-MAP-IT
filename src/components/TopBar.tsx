@@ -76,26 +76,35 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
       </div>
 
-      {/* Right: Projection Toggle & Info / Architecture Modal Action */}
+      {/* Right: Projection Switcher (2D / 3D Globe) & Info Action */}
       <div className="flex items-center gap-2 pointer-events-auto">
         {onToggleProjection && projection && (
-          <button
-            onClick={() => onToggleProjection(projection === 'globe' ? 'mercator' : 'globe')}
-            className="glass-panel px-3 py-2 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-all border border-white/10 flex items-center gap-2 group"
-            title={`Toggle View (Currently ${projection === 'globe' ? '3D Globe' : '2D Map'})`}
-          >
-            {projection === 'globe' ? (
-              <>
-                <Globe className="w-4 h-4 text-subsea-cyan" />
-                <span className="hidden sm:inline text-xs font-mono font-medium text-subsea-cyan">3D Globe</span>
-              </>
-            ) : (
-              <>
-                <MapIcon className="w-4 h-4 text-subsea-muted group-hover:text-subsea-text" />
-                <span className="hidden sm:inline text-xs font-mono font-medium text-subsea-text">2D Map</span>
-              </>
-            )}
-          </button>
+          <div className="glass-panel p-1 rounded-2xl border border-white/10 flex items-center gap-1 shadow-lg">
+            <button
+              onClick={() => onToggleProjection('mercator')}
+              className={`px-2.5 py-1 rounded-xl text-xs font-mono flex items-center gap-1.5 transition-all ${
+                projection === 'mercator'
+                  ? 'bg-subsea-cyan text-black font-semibold shadow-glow-cyan'
+                  : 'text-subsea-muted hover:text-subsea-text hover:bg-white/5'
+              }`}
+              title="Switch to 2D Planar Map"
+            >
+              <MapIcon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">2D</span>
+            </button>
+            <button
+              onClick={() => onToggleProjection('globe')}
+              className={`px-2.5 py-1 rounded-xl text-xs font-mono flex items-center gap-1.5 transition-all ${
+                projection === 'globe'
+                  ? 'bg-subsea-cyan text-black font-semibold shadow-glow-cyan'
+                  : 'text-subsea-muted hover:text-subsea-text hover:bg-white/5'
+              }`}
+              title="Switch to 3D Orbital Globe"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">3D Globe</span>
+            </button>
+          </div>
         )}
 
         <button
