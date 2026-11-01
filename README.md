@@ -17,7 +17,7 @@ People often assume the "Cloud" exists in the sky or through wireless satellite 
 **TerraPulse SUBSEA** visualizes this critical, fragile physical substrate:
 * **733 Subsea Cables:** Charted multi-line geometries across Atlantic, Pacific, and Indian Ocean basins with interactive route isolation.
 * **1,928 Coastal Landing Hubs:** Terminal amplifier and power-feed points connecting undersea cables to continental terrestrial dark-fiber backbones.
-* **34+ AWS Cloud Regions:** Official geographic regional centers plotted with regional connectivity context.
+* **28 AWS Cloud Regions:** Key global cloud regions plotted with geographic and undersea landing connectivity context.
 * **Strategic Chokepoint Explorer:** 1-click camera dives into high-density bottlenecks:
   1. *Bab-el-Mandeb & Red Sea* (16+ cables squeezed into a 20km trench)
   2. *Strait of Malacca / Singapore* (The Asia-Pacific super-artery)
@@ -35,7 +35,7 @@ TerraPulse SUBSEA is engineered for production reliability, edge-caching perform
 |                                Authoritative Data Sources                             |
 |  - TeleGeography Subsea Cables & Landing Stations (733 Cables / 1,928 Landing Hubs)   |
 |  - USGS Earthquake Hazards Program (Live 24h / 7d / 30d Feeds)                        |
-|  - AWS Global Infrastructure Reference (34+ Cloud Regions)                            |
+|  - AWS Global Infrastructure Reference (28 Major Cloud Regions in Dataset)            |
 +-------------------------------------------+-------------------------------------------+
                                             |
                                             v
@@ -77,10 +77,11 @@ TerraPulse SUBSEA is engineered for production reliability, edge-caching perform
 
 ## 🔬 Scientific Honesty & Proximity Methodology
 
-TerraPulse SUBSEA enforces strict scientific integrity:
-* **Proximity $\neq$ Damage:** A live earthquake within 50 km of a cable does **not** prove the cable is broken. Cable failures depend on seabed turbidity avalanches, fault displacement, and armored casing. Therefore, alerts are explicitly labeled **"Potential Physical Exposure Observation"**, never "Confirmed Cut".
-* **Approximate Charted Paths:** Publicly mapped cable paths represent charted corridors rather than surveyed subsea centimeter-grade coordinates.
-* **Deterministic Math:** Proximity distances are calculated in client code via Turf.js great-circle algorithms from actual USGS epicenter coordinates to vector line segments—zero AI hallucinations or fabricated outages.
+TerraPulse SUBSEA enforces strict scientific integrity and transparent screening heuristics:
+* **Proximity $\neq$ Damage:** A live earthquake within 50 km of a cable does **not** prove the cable is broken. Cable failures depend on seabed turbidity avalanches, fault scarp displacement, burial status, and armored casing. Therefore, alerts are explicitly labeled **"Potential Physical Exposure Observation"**, never "Confirmed Cut".
+* **Focal Depth & Seismological Realism:** Earthquake focal depth is directly incorporated into the risk tiering heuristic. Deep-focus events (focal depth $> 70\text{ km}$) radiate seismic energy far below the ocean floor where seabed shear displacement and sediment gravity flows are geophysically improbable; they are categorized as **Advisory / Monitor** and de-prioritized relative to shallow crustal events ($\le 70\text{ km}$).
+* **Realistic Distance Precision:** Publicly mapped cable paths represent charted corridors rather than surveyed subsea centimeter-grade coordinates, and USGS epicenters have inherent geographic variance. Distances are expressed with realistic tolerances (`Within 5 km`, `~10 km`, `~25 km`, `±10 km tolerance`) rather than false sub-kilometer precision.
+* **Deterministic Spatial Screening:** Great-circle proximity is computed deterministically in-browser via Turf.js against a fast spatial grid index—zero AI hallucinations or fabricated outages.
 
 ---
 
@@ -109,7 +110,7 @@ This 3-minute sequence matches our built-in **Story Mode**:
 | **0:25 - 0:55** | Clicking **Story Mode** $\rightarrow$ Chapter 2: Luzon Strait (Taiwan/Philippines). | *"On December 26, 2006, an M7.1 earthquake off Taiwan triggered undersea avalanches that severed 8 submarine cables simultaneously, crippling East Asian banking for weeks. This proved the physical vulnerability of our digital world."* |
 | **0:55 - 1:30** | Story Mode Chapter 3: Camera flies to **Bab-el-Mandeb & Red Sea**. | *"Here in the Red Sea, 16 major intercontinental cable systems are squeezed into a waterway just 20 kilometers wide. TerraPulse SUBSEA tracks the route concentration in these critical chokepoints."* |
 | **1:30 - 2:05** | Clicking **Exposure Alert** from the live feed $\rightarrow$ camera flies to an offshore epicenter; dashed proximity line renders to the nearest cable with distance counter in km. | *"Using live USGS streaming feeds, our Turf.js spatial engine calculates the exact distance from offshore epicenters to charted cables. Here, an offshore tremor is flagged as a potential physical exposure observation 34 kilometers from the AAE-1 cable."* |
-| **2:05 - 2:35** | Clicking an **AWS Region** (e.g. `ap-southeast-1` Singapore or `eu-central-1` Frankfurt). | *"We plot 34+ AWS Regions alongside coastal landing stations, demonstrating how cloud infrastructure physically ties into regional subsea landing hubs."* |
+| **2:05 - 2:35** | Clicking an **AWS Region** (e.g. `ap-southeast-1` Singapore or `eu-central-1` Frankfurt). | *"We plot 28 key AWS Regions alongside coastal landing stations, demonstrating how cloud infrastructure physically ties into regional subsea landing hubs."* |
 | **2:35 - 3:00** | Pressing `⌘K` to open the Command Palette, searching cables, and showing the Amazon Location Service and S3 hosting architecture slide. | *"TerraPulse SUBSEA runs on Amazon Location Service and Amazon S3 static hosting, delivering sub-second spatial intelligence at zero ongoing compute cost. Check out our live demo and open-source repo."* |
 
 ---

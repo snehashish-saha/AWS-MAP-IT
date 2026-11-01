@@ -3,7 +3,8 @@ import { USGS_FEEDS } from '../constants/feeds';
 
 // Short in-memory cache to prevent excessive requests
 const feedCache = new Map<string, { data: EarthquakeFeatureCollection; timestamp: number }>();
-const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+const inFlightRequests = new Map<string, Promise<EarthquakeFeatureCollection>>();
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes in-memory cache
 
 export async function fetchEarthquakeFeed(feedType: FeedType, signal?: AbortSignal): Promise<EarthquakeFeatureCollection> {
   const config = USGS_FEEDS[feedType] || USGS_FEEDS['24h'];
@@ -14,76 +15,88 @@ export async function fetchEarthquakeFeed(feedType: FeedType, signal?: AbortSign
     return cached.data;
   }
 
-  let rawData: EarthquakeFeatureCollection;
-
-  try {
-    const response = await fetch(config.url, { signal });
-    if (!response.ok) {
-      throw new Error(`USGS feed error: ${response.status} ${response.statusText}`);
-    }
-    rawData = await response.json();
-  } catch (netErr) {
-    console.warn(`Primary USGS feed failed (${config.id}). Attempting snapshot fixture fallback...`, netErr);
-    const fallbackRes = await fetch('/data/usgs_snapshot.geojson', { signal });
-    if (!fallbackRes.ok) {
-      throw netErr;
-    }
-    rawData = await fallbackRes.json();
-  }
-  
-  // Validate and deduplicate features
-  const seenIds = new Set<string | number>();
-  const validFeatures: EarthquakeFeature[] = [];
-
-  for (const feature of rawData.features) {
-    if (!feature || !feature.geometry || !Array.isArray(feature.geometry.coordinates)) {
-      continue;
-    }
-
-    const [lng, lat, depth] = feature.geometry.coordinates;
-    // Validate coordinate boundaries
-    if (typeof lng !== 'number' || typeof lat !== 'number' || isNaN(lng) || isNaN(lat)) {
-      continue;
-    }
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      continue;
-    }
-
-    const id = feature.id ?? `${lat},${lng},${feature.properties?.time}`;
-    if (seenIds.has(id)) {
-      continue;
-    }
-    seenIds.add(id);
-
-    // Sanitize properties: ensure mag is number or null, not NaN or undefined
-    const rawMag = feature.properties?.mag;
-    const mag = (typeof rawMag === 'number' && !isNaN(rawMag)) ? rawMag : null;
-
-    validFeatures.push({
-      ...feature,
-      id,
-      geometry: {
-        type: 'Point',
-        coordinates: [lng, lat, typeof depth === 'number' && !isNaN(depth) ? depth : 0],
-      },
-      properties: {
-        ...feature.properties,
-        mag,
-        place: feature.properties?.place || 'Unspecified location',
-        time: feature.properties?.time || Date.now(),
-        updated: feature.properties?.updated || Date.now(),
-        url: feature.properties?.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${id}`,
-      },
-    });
+  // Deduplicate in-flight requests to eliminate network thrashing
+  if (inFlightRequests.has(cacheKey)) {
+    return inFlightRequests.get(cacheKey)!;
   }
 
-  const cleanedData: EarthquakeFeatureCollection = {
-    ...rawData,
-    features: validFeatures,
-  };
+  const fetchPromise = (async () => {
+    let rawData: EarthquakeFeatureCollection;
 
-  feedCache.set(cacheKey, { data: cleanedData, timestamp: Date.now() });
-  return cleanedData;
+    try {
+      const response = await fetch(config.url, { signal });
+      if (!response.ok) {
+        throw new Error(`USGS feed error: ${response.status} ${response.statusText}`);
+      }
+      rawData = await response.json();
+    } catch (netErr) {
+      console.warn(`Primary USGS feed failed (${config.id}). Attempting snapshot fixture fallback...`, netErr);
+      const fallbackRes = await fetch('/data/usgs_snapshot.geojson', { signal });
+      if (!fallbackRes.ok) {
+        throw netErr;
+      }
+      rawData = await fallbackRes.json();
+    }
+    
+    // Validate and deduplicate features
+    const seenIds = new Set<string | number>();
+    const validFeatures: EarthquakeFeature[] = [];
+
+    for (const feature of rawData.features) {
+      if (!feature || !feature.geometry || !Array.isArray(feature.geometry.coordinates)) {
+        continue;
+      }
+
+      const [lng, lat, depth] = feature.geometry.coordinates;
+      // Validate coordinate boundaries
+      if (typeof lng !== 'number' || typeof lat !== 'number' || isNaN(lng) || isNaN(lat)) {
+        continue;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        continue;
+      }
+
+      const id = feature.id ?? `${lat},${lng},${feature.properties?.time}`;
+      if (seenIds.has(id)) {
+        continue;
+      }
+      seenIds.add(id);
+
+      // Sanitize properties: ensure mag is number or null, not NaN or undefined
+      const rawMag = feature.properties?.mag;
+      const mag = (typeof rawMag === 'number' && !isNaN(rawMag)) ? rawMag : null;
+
+      validFeatures.push({
+        ...feature,
+        id,
+        geometry: {
+          type: 'Point',
+          coordinates: [lng, lat, typeof depth === 'number' && !isNaN(depth) ? depth : 0],
+        },
+        properties: {
+          ...feature.properties,
+          mag,
+          place: feature.properties?.place || 'Unspecified location',
+          time: feature.properties?.time || Date.now(),
+          updated: feature.properties?.updated || Date.now(),
+          url: feature.properties?.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${id}`,
+        },
+      });
+    }
+
+    const cleanedData: EarthquakeFeatureCollection = {
+      ...rawData,
+      features: validFeatures,
+    };
+
+    feedCache.set(cacheKey, { data: cleanedData, timestamp: Date.now() });
+    return cleanedData;
+  })().finally(() => {
+    inFlightRequests.delete(cacheKey);
+  });
+
+  inFlightRequests.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
 export function filterEarthquakes(

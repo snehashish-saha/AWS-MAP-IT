@@ -7,7 +7,6 @@ interface TopBarProps {
   onOpenInfo: () => void;
   isLoadingData: boolean;
   activeFeed: string;
-  alertsCount: number;
   amazonLocationKey?: string;
 }
 
@@ -17,7 +16,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenInfo,
   isLoadingData,
   activeFeed,
-  alertsCount,
   amazonLocationKey,
 }) => {
   return (
@@ -39,9 +37,6 @@ export const TopBar: React.FC<TopBarProps> = ({
                 SUBSEA
               </span>
             </div>
-            <div className="text-[10px] text-subsea-muted font-medium mt-0.5 hidden sm:block">
-              The Physical Internet & Undersea Cloud Risk
-            </div>
           </div>
         </div>
 
@@ -50,9 +45,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-subsea-muted text-[11px] font-mono">USGS {activeFeed.toUpperCase()}</span>
           {isLoadingData ? (
-            <span className="text-subsea-cyan font-mono text-[10px] animate-pulse">SYNCING</span>
+            <span className="text-subsea-cyan font-mono text-[10px] animate-pulse">Syncing</span>
           ) : (
-            <span className="text-emerald-400 font-mono text-[10px] font-semibold">STREAMING</span>
+            <span className="text-emerald-400 font-mono text-[10px] font-semibold">Streaming</span>
           )}
 
           {amazonLocationKey && amazonLocationKey.trim() && (
@@ -80,13 +75,6 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Modals & Settings Actions */}
       <div className="flex items-center gap-2 pointer-events-auto">
-        {alertsCount > 0 && (
-          <div className="hidden xl:flex items-center gap-1.5 glass-panel px-3 py-2 rounded-2xl border border-subsea-amber/40 text-xs text-subsea-amber font-mono font-semibold">
-            <span className="w-2 h-2 rounded-full bg-subsea-amber animate-ping" />
-            <span>{alertsCount} POTENTIAL EXPOSURES</span>
-          </div>
-        )}
-
         <button
           onClick={onOpenSettings}
           className="glass-panel p-2.5 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-colors border border-white/10"

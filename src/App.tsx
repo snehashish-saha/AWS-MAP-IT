@@ -102,6 +102,15 @@ export function App() {
     return () => clearInterval(interval);
   }, [activeFeed, loadFeed]);
 
+  // Pre-load 7d and 30d feeds in background cache during idle time for 0ms instantaneous tab switching
+  useEffect(() => {
+    const idleTimer = setTimeout(() => {
+      fetchEarthquakeFeed('7d').catch(() => {});
+      fetchEarthquakeFeed('30d').catch(() => {});
+    }, 2000);
+    return () => clearTimeout(idleTimer);
+  }, []);
+
   // Pre-calculate proximity alerts once per feed for all quakes >= M2.5
   const allFeedExposureAlerts = useMemo(() => {
     if (!cablesData || !earthquakesData?.features.length) return [];
@@ -152,6 +161,14 @@ export function App() {
     setStoryStepIndex(0);
     setActiveChokepoint(null);
     setSelectedEntity(null);
+    // Guarantee that key layers are enabled so Story Mode never runs on a blank map
+    setLayerVisibility({
+      cables: true,
+      landingPoints: true,
+      awsRegions: true,
+      earthquakes: true,
+      alertsOnly: false,
+    });
   };
 
   const handleNextStoryStep = () => {
@@ -217,13 +234,14 @@ export function App() {
         <MapCanvas
           cablesData={cablesData}
           landingPointsData={landingPointsData}
-          earthquakes={visibleEarthquakes}
+          earthquakes={earthquakesData?.features || []}
           alerts={exposureAlerts}
           selectedEntity={selectedEntity}
           onSelectEntity={setSelectedEntity}
           layerVisibility={layerVisibility}
           activeChokepoint={activeChokepoint}
           storyStep={storyStepIndex !== null ? STORY_STEPS[storyStepIndex] : null}
+          minMagnitude={minMagnitude}
           amazonLocationKey={amazonLocationKey}
           amazonLocationRegion={amazonLocationRegion}
         />
@@ -239,7 +257,6 @@ export function App() {
         onOpenInfo={() => setIsInfoOpen(true)}
         isLoadingData={isLoadingData}
         activeFeed={activeFeed}
-        alertsCount={exposureAlerts.length}
         amazonLocationKey={amazonLocationKey}
       />
 
@@ -259,6 +276,7 @@ export function App() {
         onSelectEntity={setSelectedEntity}
         onSelectChokepoint={handleSelectChokepoint}
         activeChokepoint={activeChokepoint}
+        isStoryModeActive={storyStepIndex !== null}
       />
 
       {/* 4. Floating Insight Card (Right - Entity Details) */}

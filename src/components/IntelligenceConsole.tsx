@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldAlert,
@@ -21,6 +21,7 @@ import type {
   SelectedEntity,
 } from '../types';
 import { CHOKEPOINT_PRESETS } from '../constants/chokepoints';
+import { formatGeodesicDistance, formatFocalDepth } from '../services/proximity';
 
 interface IntelligenceConsoleProps {
   layerVisibility: LayerVisibility;
@@ -37,6 +38,7 @@ interface IntelligenceConsoleProps {
   onSelectEntity: (entity: SelectedEntity) => void;
   onSelectChokepoint: (preset: ChokepointPreset | null) => void;
   activeChokepoint: ChokepointPreset | null;
+  isStoryModeActive?: boolean;
 }
 
 type TabType = 'radar' | 'layers' | 'chokepoints';
@@ -56,9 +58,27 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
   onSelectEntity,
   onSelectChokepoint,
   activeChokepoint,
+  isStoryModeActive = false,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<TabType>('radar');
+  const [localMag, setLocalMag] = useState<number>(minMagnitude);
+
+  useEffect(() => {
+    setLocalMag(minMagnitude);
+  }, [minMagnitude]);
+
+  const handleSliderChange = (newVal: number) => {
+    setLocalMag(newVal);
+    onChangeMinMagnitude(newVal);
+  };
+
+  // Auto-collapse console when Story Mode guided tour begins to grant 100% screen focus
+  useEffect(() => {
+    if (isStoryModeActive) {
+      setIsOpen(false);
+    }
+  }, [isStoryModeActive]);
 
   // Notable Transoceanic Systems for exploration
   const notableCables = [
@@ -161,8 +181,8 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
               {activeTab === 'radar' && (
                 <div className="p-4 space-y-3">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-subsea-text uppercase tracking-wider">
-                      Proximity Radar (100km Buffer)
+                    <span className="font-semibold text-subsea-text tracking-wide">
+                      Proximity screening (100 km buffer)
                     </span>
                     <span className="text-[10px] font-mono text-subsea-muted">
                       USGS {activeFeed.toUpperCase()} · M{minMagnitude.toFixed(1)}+
@@ -185,7 +205,9 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                       {alerts.map((alert) => {
                         const mag = alert.earthquake.properties.mag ?? 0;
-                        const isSevere = mag >= 5.5;
+                        const depth = alert.earthquake.geometry.coordinates[2] ?? 10;
+                        const isDeep = depth > 70;
+                        const isSevere = mag >= 5.5 && !isDeep;
 
                         return (
                           <div
@@ -199,7 +221,7 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                             className="p-3 rounded-xl bg-black/40 hover:bg-white/[0.06] border border-white/10 hover:border-subsea-amber/50 cursor-pointer transition-all group"
                           >
                             <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span
                                   className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
                                     isSevere
@@ -210,7 +232,26 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                                   M{mag.toFixed(1)}
                                 </span>
                                 <span className="text-xs font-mono font-bold text-subsea-amber">
-                                  {alert.distanceKm} km away
+                                  {formatGeodesicDistance(alert.distanceKm)}
+                                </span>
+                                <span
+                                  className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold uppercase ${
+                                    isDeep
+                                      ? 'bg-slate-700/50 text-slate-300 border border-slate-600/40'
+                                      : alert.proximityCategory === 'critical'
+                                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                      : alert.proximityCategory === 'warning'
+                                      ? 'bg-subsea-amber-dim text-subsea-amber border border-subsea-amber/40'
+                                      : 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                                  }`}
+                                >
+                                  {isDeep
+                                    ? 'Deep Focus'
+                                    : alert.proximityCategory === 'critical'
+                                    ? 'High Hazard'
+                                    : alert.proximityCategory === 'warning'
+                                    ? 'Advisory'
+                                    : 'Monitor'}
                                 </span>
                               </div>
                               <span className="text-[10px] font-mono text-subsea-muted">
@@ -227,7 +268,7 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
 
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5 text-[10px] text-subsea-muted font-mono">
                               <span className="truncate max-w-[170px]">
-                                {alert.earthquake.properties.place || 'Offshore Epicenter'}
+                                {alert.earthquake.properties.place || 'Offshore Epicenter'} · {formatFocalDepth(depth)}
                               </span>
                               <span className="text-subsea-cyan flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
                                 Inspect <ChevronRight className="w-3 h-3" />
@@ -240,7 +281,7 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                   )}
 
                   <div className="text-[10px] text-subsea-muted/70 bg-white/[0.02] p-2.5 rounded-xl border border-white/5 leading-relaxed">
-                    <strong>Observation Standard:</strong> Physical exposure flags identify geographic proximity between surveyed seabed fiber paths and USGS epicenters.
+                    <strong>Screening Heuristic:</strong> Highlights charted seabed fiber segments within 100 km of USGS epicenters. Shallow crustal events (&lt;70 km) with high energy pose primary turbidity current risk; deep-focus events (&gt;70 km) rarely trigger seabed rupture.
                   </div>
                 </div>
               )}
@@ -276,7 +317,7 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                     <div className="flex items-center justify-between text-[10px] uppercase font-semibold text-subsea-muted/80 tracking-wider mb-2">
                       <span>Minimum Magnitude</span>
                       <span className="font-mono text-red-400 font-bold">
-                        M{minMagnitude.toFixed(1)}+
+                        M{localMag.toFixed(1)}+
                       </span>
                     </div>
                     <input
@@ -284,8 +325,8 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                       min="2.5"
                       max="6.5"
                       step="0.5"
-                      value={minMagnitude}
-                      onChange={(e) => onChangeMinMagnitude(parseFloat(e.target.value))}
+                      value={localMag}
+                      onChange={(e) => handleSliderChange(parseFloat(e.target.value))}
                       className="w-full h-1.5 bg-black/50 rounded-lg appearance-none cursor-pointer accent-subsea-cyan"
                     />
                     <div className="flex justify-between text-[9px] font-mono text-subsea-muted/70 mt-1">
@@ -320,7 +361,7 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                   {/* Spatial Layer Switches */}
                   <div className="space-y-1.5 pt-1 border-t border-white/5">
                     <div className="text-[10px] uppercase font-semibold text-subsea-muted/80 tracking-wider mb-1.5">
-                      Map Layer Layers
+                      Spatial Layers
                     </div>
 
                     {/* Cables */}
@@ -341,7 +382,7 @@ export const IntelligenceConsole: React.FC<IntelligenceConsoleProps> = ({
                       className="flex items-center justify-between p-2 rounded-xl hover:bg-white/[0.04] cursor-pointer transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <Anchor className="w-3.5 h-3.5 text-subsea-amber" />
+                        <Anchor className="w-3.5 h-3.5 text-slate-400" />
                         <span className="text-xs text-subsea-text font-medium">Landing Hubs</span>
                       </div>
                       <span className="text-[10px] font-mono text-subsea-muted">{landingCount}</span>

@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TerraPulse SUBSEA - Undersea Cloud & Seismic Hazard Spatial Intelligence Platform
+  Production Serverless Architecture: EventBridge -> Lambda -> S3 -> CloudFront CDN
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+      - staging
+      - dev
+    Description: Deployment target environment.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.12
+    Architectures:
+      - arm64
+
+Resources:
+  # ----------------------------------------------------------------------------
+  # 1. S3 Storage Bucket for Web Frontend & GeoJSON Snapshots
+  # ----------------------------------------------------------------------------
+  TerraPulseDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'terrapulse-subsea-${Environment}-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            MaxAge: 3600
+
+  # ----------------------------------------------------------------------------
+  # 2. CloudFront Origin Access Control (OAC)
+  # ----------------------------------------------------------------------------
+  CloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'TerraPulseOAC-${Environment}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ----------------------------------------------------------------------------
+  # 3. CloudFront Distribution (Edge CDN & HTTPS Termination)
+  # ----------------------------------------------------------------------------
+  TerraPulseCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: 'TerraPulse SUBSEA Web Console & Edge GeoJSON Cache'
+        DefaultRootObject: 'index.html'
+        HttpVersion: 'http2and3'
+        PriceClass: 'PriceClass_100'
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt TerraPulseDataBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 10
+
+  # ----------------------------------------------------------------------------
+  # 4. S3 Bucket Policy (Allows only CloudFront OAC & Lambda)
+  # ----------------------------------------------------------------------------
+  TerraPulseBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TerraPulseDataBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: 's3:GetObject'
+            Resource: !Sub '${TerraPulseDataBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${TerraPulseCloudFrontDistribution}'
+
+  # ----------------------------------------------------------------------------
+  # 5. Ingestion Lambda Function
+  # ----------------------------------------------------------------------------
+  UsgsIngestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'terrapulse-usgs-ingestion-${Environment}'
+      CodeUri: ./lambda/
+      Handler: lambda_function.lambda_handler
+      Description: 'Pulls live USGS earthquake feeds and caches them to S3 with edge invalidation'
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref TerraPulseDataBucket
+          S3_OBJECT_KEY: 'data/usgs_snapshot.geojson'
+          CLOUDFRONT_DISTRIBUTION_ID: !Ref TerraPulseCloudFrontDistribution
+          USGS_FEED_URL: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson'
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref TerraPulseDataBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'cloudfront:CreateInvalidation'
+              Resource: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${TerraPulseCloudFrontDistribution}'
+      Events:
+        FiveMinuteSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(5 minutes)'
+            Description: 'Trigger USGS earthquake ingestion every 5 minutes'
+            Enabled: true
+
+Outputs:
+  CloudFrontDistributionId:
+    Description: 'CloudFront Distribution ID'
+    Value: !Ref TerraPulseCloudFrontDistribution
+
+  CloudFrontDomainName:
+    Description: 'CloudFront Endpoint URL for Live Mission Console'
+    Value: !GetAtt TerraPulseCloudFrontDistribution.DomainName
+
+  S3BucketName:
+    Description: 'S3 Data Bucket Name'
+    Value: !Ref TerraPulseDataBucket
+
+  LambdaFunctionArn:
+    Description: 'USGS Ingestion Lambda ARN'
+    Value: !GetAtt UsgsIngestionFunction.Arn

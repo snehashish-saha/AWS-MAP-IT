@@ -28,6 +28,7 @@ interface MapCanvasProps {
   layerVisibility: LayerVisibility;
   activeChokepoint: ChokepointPreset | null;
   storyStep: StoryStep | null;
+  minMagnitude?: number;
   amazonLocationKey?: string;
   amazonLocationRegion?: string;
 }
@@ -66,6 +67,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   layerVisibility,
   activeChokepoint,
   storyStep,
+  minMagnitude = 4.0,
   amazonLocationKey,
   amazonLocationRegion = 'us-east-1',
 }) => {
@@ -304,9 +306,19 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           type: 'circle',
           source: 'landing-points',
           paint: {
-            'circle-radius': 4.5,
-            'circle-color': '#FFB020',
-            'circle-opacity': 0.35,
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              2, 1.5,
+              5, 4.0,
+              9, 6.5
+            ],
+            'circle-color': '#94A3B8',
+            'circle-opacity': [
+              'interpolate', ['linear'], ['zoom'],
+              2, 0.0,
+              4, 0.15,
+              7, 0.35
+            ],
             'circle-blur': 1,
           },
         });
@@ -316,11 +328,22 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           type: 'circle',
           source: 'landing-points',
           paint: {
-            'circle-radius': 2.5,
-            'circle-color': '#FFB020',
-            'circle-opacity': 0.9,
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              2, 0.8,
+              4, 1.8,
+              7, 3.0,
+              11, 4.5
+            ],
+            'circle-color': '#CBD5E1',
+            'circle-opacity': [
+              'interpolate', ['linear'], ['zoom'],
+              2, 0.15,
+              3.5, 0.45,
+              6, 0.95
+            ],
             'circle-stroke-width': 1,
-            'circle-stroke-color': '#070A12',
+            'circle-stroke-color': '#0F172A',
           },
         });
       }
@@ -333,27 +356,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         });
 
         map.addLayer({
-          id: 'aws-regions-halo',
-          type: 'circle',
-          source: 'aws-regions',
-          paint: {
-            'circle-radius': 11,
-            'circle-color': '#8B5CF6',
-            'circle-opacity': 0.28,
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#C4B5FD',
-          },
-        });
-
-        map.addLayer({
           id: 'aws-regions-core',
           type: 'circle',
           source: 'aws-regions',
           paint: {
-            'circle-radius': 4.5,
-            'circle-color': '#8B5CF6',
+            'circle-radius': 4.0,
+            'circle-color': '#A855F7',
             'circle-stroke-width': 1.5,
             'circle-stroke-color': '#FFFFFF',
+            'circle-opacity': 1.0,
           },
         });
       }
@@ -365,6 +376,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           data: earthquakesGeoJSONRef.current as any,
         });
 
+        // Shockwave aura ONLY on active cable exposure alerts
         map.addLayer({
           id: 'earthquakes-shockwave',
           type: 'circle',
@@ -378,39 +390,60 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               5, 12,
               8, 28
             ],
-            'circle-color': [
+            'circle-color': '#FFB020',
+            'circle-opacity': [
               'case',
               ['==', ['get', 'isAlert'], true],
-              '#FFB020',
-              '#EF4444'
+              0.35,
+              0
             ],
-            'circle-opacity': 0.25,
             'circle-blur': 0.5,
           },
         });
 
+        // Earthquake Core: Vivid amber for coastal/cable alerts; quiet slate for inland quakes
         map.addLayer({
           id: 'earthquakes-core',
           type: 'circle',
           source: 'earthquakes',
           paint: {
             'circle-radius': [
-              'interpolate',
-              ['linear'],
-              ['coalesce', ['get', 'mag'], 2],
-              2, 2.5,
-              5, 5.5,
-              8, 10
+              'case',
+              ['==', ['get', 'isAlert'], true],
+              [
+                'interpolate',
+                ['linear'],
+                ['coalesce', ['get', 'mag'], 2],
+                2, 3.0,
+                5, 6.0,
+                8, 10.0
+              ],
+              2.0 // Quiet 2px dot for non-alert/inland tremors
             ],
             'circle-color': [
               'case',
               ['==', ['get', 'isAlert'], true],
-              '#FFB020',
-              '#EF4444'
+              '#FFB020', // Alert: Vivid Amber
+              '#64748B'  // Inland/Non-alert: Quiet slate gray (no false alarm red)
             ],
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#FFFFFF',
-            'circle-opacity': 0.95,
+            'circle-stroke-width': [
+              'case',
+              ['==', ['get', 'isAlert'], true],
+              1.5,
+              0.5
+            ],
+            'circle-stroke-color': [
+              'case',
+              ['==', ['get', 'isAlert'], true],
+              '#FFFFFF',
+              '#0F172A'
+            ],
+            'circle-opacity': [
+              'case',
+              ['==', ['get', 'isAlert'], true],
+              0.95,
+              0.35
+            ],
           },
         });
       }
@@ -589,12 +622,32 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     toggle('cables-selected', layerVisibility.cables);
     toggle('landing-points-glow', layerVisibility.landingPoints);
     toggle('landing-points-circle', layerVisibility.landingPoints);
-    toggle('aws-regions-halo', layerVisibility.awsRegions);
     toggle('aws-regions-core', layerVisibility.awsRegions);
     toggle('earthquakes-shockwave', layerVisibility.earthquakes);
     toggle('earthquakes-core', layerVisibility.earthquakes);
     toggle('proximity-vectors-line', layerVisibility.earthquakes && layerVisibility.cables);
   }, [layerVisibility]);
+
+  // Real-time GPU shader filter for magnitude & alerts-only (Instant 0ms, zero Web Worker serialization)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoaded.current) return;
+
+    const magVal = minMagnitude;
+    const magExpr: any = ['>=', ['coalesce', ['get', 'mag'], 0], magVal];
+
+    if (map.getLayer('earthquakes-core')) {
+      if (layerVisibility.alertsOnly) {
+        map.setFilter('earthquakes-core', ['all', ['==', ['get', 'isAlert'], true], magExpr] as any);
+      } else {
+        map.setFilter('earthquakes-core', magExpr as any);
+      }
+    }
+
+    if (map.getLayer('earthquakes-shockwave')) {
+      map.setFilter('earthquakes-shockwave', ['all', ['==', ['get', 'isAlert'], true], magExpr] as any);
+    }
+  }, [minMagnitude, layerVisibility.alertsOnly]);
 
   // Handle Camera Movement on Chokepoint or Story Step
   useEffect(() => {
