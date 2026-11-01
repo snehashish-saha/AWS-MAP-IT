@@ -1,160 +1,202 @@
 """
-TerraPulse SUBSEA - USGS Earthquake Ingestion & S3 Edge Cache Invalidator
+TerraPulse SUBSEA - USGS Earthquake Ingestion & DynamoDB Incident Logger
 AWS Lambda Function (Python 3.12)
 
 Architecture Role:
-Runs periodically via Amazon EventBridge Scheduler (every 5 minutes).
-Fetches authoritative earthquake observations from the USGS Real-Time Hazards API,
-validates GeoJSON structure, filters relevant seismic events, and writes an immutable,
-edge-cached GeoJSON snapshot to Amazon S3 for CloudFront distribution.
+Periodically triggered by Amazon EventBridge (every 5 minutes).
+1. Ingests real-time seismic event feeds directly from the USGS Hazards API.
+2. Identifies earthquakes near key subsea cable corridors.
+3. Automatically writes incident audit records into Amazon DynamoDB (table: `TerraPulseAlerts`).
+4. Optionally edge-caches the GeoJSON snapshot to Amazon S3.
 
-Zero third-party pip dependencies required: Uses standard library `urllib` and `json`,
-along with the native AWS Lambda runtime `boto3` SDK.
+Zero pip dependencies required: Uses standard library `urllib`, `json`, and native AWS `boto3`.
 """
 
 import os
 import json
 import logging
 import urllib.request
-import urllib.error
 from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
 
-# Configure structured logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables with sensible defaults
-S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "terrapulse-subsea-cache")
+DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE", "TerraPulseAlerts")
+S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "")
 S3_OBJECT_KEY = os.environ.get("S3_OBJECT_KEY", "data/usgs_snapshot.geojson")
-CLOUDFRONT_DISTRIBUTION_ID = os.environ.get("CLOUDFRONT_DISTRIBUTION_ID", "")
 USGS_FEED_URL = os.environ.get(
     "USGS_FEED_URL",
     "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson"
 )
 
-s3_client = boto3.client("s3")
-cloudfront_client = boto3.client("cloudfront") if CLOUDFRONT_DISTRIBUTION_ID else None
+dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+s3_client = boto3.client("s3") if S3_BUCKET_NAME else None
+
+# Strategic subsea chokepoints / high-density cable corridors for backend screening
+STRATEGIC_CORRIDORS = [
+    {
+        "name": "Bab-el-Mandeb & Red Sea",
+        "bounds": [30.0, 10.0, 45.0, 30.0],  # [min_lon, min_lat, max_lon, max_lat]
+        "cables": "AAE-1, SEA-ME-WE 5, EIG, PEACE Cable, 2Africa",
+    },
+    {
+        "name": "Strait of Malacca & Singapore",
+        "bounds": [95.0, -2.0, 106.0, 8.0],
+        "cables": "SEA-ME-WE 3, SJC, APG, Indigo-West, ECHO",
+    },
+    {
+        "name": "Luzon Strait & Taiwan Trench",
+        "bounds": [118.0, 18.0, 126.0, 24.0],
+        "cables": "EAC-C2C, APCN-2, SJC2, FASTER, PLCN",
+    },
+    {
+        "name": "Transpacific Japan Trench",
+        "bounds": [135.0, 30.0, 148.0, 42.0],
+        "cables": "JUPITER, FASTER, PC-1, Unity, SJC",
+    },
+    {
+        "name": "Panama & Caribbean Isthmus",
+        "bounds": [-85.0, 6.0, -75.0, 12.0],
+        "cables": "Pan-American Crossing (PAC), ARCOS, MAYA-1",
+    },
+]
 
 
 def fetch_usgs_feed(feed_url: str) -> dict:
-    """Fetch real-time GeoJSON feed from USGS with timeout and validation."""
+    """Fetch real-time GeoJSON feed from USGS."""
     logger.info("Fetching USGS earthquake data from: %s", feed_url)
     req = urllib.request.Request(
         feed_url,
         headers={"User-Agent": "TerraPulse-SUBSEA-Ingestion/1.0 (AWS Lambda)"}
     )
-    with urllib.request.urlopen(req, timeout=15) as response:
+    with urllib.request.urlopen(req, timeout=12) as response:
         if response.status != 200:
             raise RuntimeError(f"USGS HTTP status {response.status}: {response.reason}")
-        raw_bytes = response.read()
-        data = json.loads(raw_bytes.decode("utf-8"))
-
-    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
-        raise ValueError("Invalid USGS feed format: Expected FeatureCollection")
-
-    feature_count = len(data.get("features", []))
-    logger.info("Successfully fetched %d earthquake features from USGS", feature_count)
-    return data
+        return json.loads(response.read().decode("utf-8"))
 
 
-def enrich_and_sanitize_geojson(feed_data: dict) -> bytes:
-    """
-    Sanitize coordinates, enforce standard float rounding, and attach
-    ingestion metadata to the GeoJSON collection.
-    """
-    metadata = feed_data.get("metadata", {})
-    metadata["ingested_at"] = datetime.now(timezone.utc).isoformat()
-    metadata["ingestion_engine"] = "AWS Lambda Python 3.12 (TerraPulse Serverless Pipeline)"
-
-    # Validate features and strip malformed coordinates
-    valid_features = []
-    for feat in feed_data.get("features", []):
-        coords = feat.get("geometry", {}).get("coordinates", [])
-        if len(coords) >= 2:
-            lon, lat = coords[0], coords[1]
-            if -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0:
-                valid_features.append(feat)
-
-    feed_data["features"] = valid_features
-    feed_data["metadata"] = metadata
-
-    return json.dumps(feed_data, separators=(",", ":")).encode("utf-8")
+def evaluate_chokepoint_exposure(lon: float, lat: float) -> dict | None:
+    """Check if epicenter lies within strategic subsea fiber corridors."""
+    for corridor in STRATEGIC_CORRIDORS:
+        min_lon, min_lat, max_lon, max_lat = corridor["bounds"]
+        if min_lon <= lon <= max_lon and min_lat <= lat <= max_lat:
+            return corridor
+    return None
 
 
-def write_to_s3(bucket: str, key: str, payload_bytes: bytes) -> str:
-    """
-    Write GeoJSON payload to S3 with optimal CDN cache headers:
-    - Content-Type: application/geo+json
-    - Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=600
-    """
-    logger.info("Writing GeoJSON snapshot (%d bytes) to s3://%s/%s", len(payload_bytes), bucket, key)
-    response = s3_client.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=payload_bytes,
-        ContentType="application/geo+json",
-        CacheControl="public, max-age=60, s-maxage=300, stale-while-revalidate=600",
-    )
-    etag = response.get("ETag", "unknown")
-    logger.info("S3 PutObject completed successfully. ETag: %s", etag)
-    return etag
+def format_risk_tier(magnitude: float, depth_km: float) -> tuple[str, str]:
+    """Scientific screening heuristic incorporating focal depth realism."""
+    if depth_km > 70.0:
+        return "ADVISORY_MONITOR", f"Deep-focus event ({depth_km:.0f} km); seabed rupture unlikely"
+    if magnitude >= 6.0:
+        return "HIGH_PHYSICAL_HAZARD", "Shallow severe crustal event; potential seabed shear"
+    if magnitude >= 4.8:
+        return "ELEVATED_MONITOR", "Moderate energy; within proximity buffer"
+    return "ADVISORY_MONITOR", "Minor energy observation"
 
 
-def invalidate_cloudfront_cache(distribution_id: str, paths: list[str]) -> None:
-    """Trigger an Amazon CloudFront cache invalidation for the refreshed snapshot."""
-    if not distribution_id or not cloudfront_client:
-        logger.info("CloudFront invalidation skipped (no distribution ID configured)")
-        return
-
-    caller_reference = f"terrapulse-lambda-{int(datetime.now(timezone.utc).timestamp())}"
-    logger.info("Invalidating CloudFront paths %s on distribution %s", paths, distribution_id)
+def write_incidents_to_dynamodb(table_name: str, features: list[dict]) -> int:
+    """Persist flagged seismic events near subsea corridors to DynamoDB."""
     try:
-        cloudfront_client.create_invalidation(
-            DistributionId=distribution_id,
-            InvalidationBatch={
-                "Paths": {
-                    "Quantity": len(paths),
-                    "Items": paths,
-                },
-                "CallerReference": caller_reference,
-            },
-        )
-        logger.info("CloudFront invalidation submitted successfully (Ref: %s)", caller_reference)
-    except ClientError as err:
-        logger.warning("CloudFront invalidation failed: %s", err)
+        table = dynamodb.Table(table_name)
+    except Exception as e:
+        logger.warning("Could not connect to DynamoDB table %s: %s", table_name, e)
+        return 0
+
+    logged_count = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for feat in features:
+        coords = feat.get("geometry", {}).get("coordinates", [])
+        if len(coords) < 3:
+            continue
+
+        lon, lat, depth_km = float(coords[0]), float(coords[1]), float(coords[2])
+        props = feat.get("properties", {})
+        mag = float(props.get("mag") or 0.0)
+        quake_id = str(feat.get("id") or "")
+
+        # Evaluate against strategic cable corridors
+        corridor = evaluate_chokepoint_exposure(lon, lat)
+        if not corridor and mag < 4.5:
+            continue
+
+        tier, tier_desc = format_risk_tier(mag, depth_km)
+        incident_id = f"INCIDENT#{quake_id}"
+
+        item = {
+            "incident_id": incident_id,
+            "usgs_id": quake_id,
+            "place": str(props.get("place") or "Offshore"),
+            "magnitude": str(round(mag, 1)),
+            "depth_km": str(round(depth_km, 1)),
+            "latitude": str(round(lat, 4)),
+            "longitude": str(round(lon, 4)),
+            "hazard_tier": tier,
+            "heuristic_note": tier_desc,
+            "strategic_corridor": corridor["name"] if corridor else "Global Offshore Route",
+            "exposed_cables": corridor["cables"] if corridor else "Transoceanic Corridors",
+            "logged_at": now_iso,
+            "event_time_utc": datetime.fromtimestamp(props.get("time", 0) / 1000.0, timezone.utc).isoformat() if props.get("time") else now_iso,
+        }
+
+        try:
+            table.put_item(Item=item)
+            logged_count += 1
+        except ClientError as ce:
+            logger.warning("Failed writing item %s to DynamoDB: %s", incident_id, ce)
+        except Exception as ex:
+            logger.warning("Error putting item to DynamoDB: %s", ex)
+
+    logger.info("Successfully logged %d incidents into DynamoDB table '%s'", logged_count, table_name)
+    return logged_count
 
 
 def lambda_handler(event, context):
-    """
-    AWS Lambda entry point triggered by EventBridge or manual invocation.
-    """
-    logger.info("TerraPulse USGS Ingestion Lambda invocation started.")
+    """AWS Lambda entry point."""
+    logger.info("Starting TerraPulse Seismic Monitor execution...")
     try:
         raw_feed = fetch_usgs_feed(USGS_FEED_URL)
-        clean_bytes = enrich_and_sanitize_geojson(raw_feed)
-        etag = write_to_s3(S3_BUCKET_NAME, S3_OBJECT_KEY, clean_bytes)
+        features = raw_feed.get("features", [])
+        total_quakes = len(features)
 
-        # Invalidate edge cache if configured
-        if CLOUDFRONT_DISTRIBUTION_ID:
-            invalidate_cloudfront_cache(CLOUDFRONT_DISTRIBUTION_ID, [f"/{S3_OBJECT_KEY}*"])
+        # Write to DynamoDB
+        logged_incidents = write_incidents_to_dynamodb(DYNAMODB_TABLE_NAME, features)
 
-        feature_count = len(raw_feed.get("features", []))
+        # Write S3 cache snapshot if bucket configured
+        s3_status = "skipped"
+        if S3_BUCKET_NAME and s3_client:
+            try:
+                clean_payload = json.dumps(raw_feed, separators=(",", ":")).encode("utf-8")
+                s3_client.put_object(
+                    Bucket=S3_BUCKET_NAME,
+                    Key=S3_OBJECT_KEY,
+                    Body=clean_payload,
+                    ContentType="application/geo+json",
+                    CacheControl="public, max-age=120"
+                )
+                s3_status = f"s3://{S3_BUCKET_NAME}/{S3_OBJECT_KEY}"
+            except Exception as s3_err:
+                logger.warning("S3 cache upload skipped or failed: %s", s3_err)
+
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "status": "success",
-                "features_ingested": feature_count,
-                "s3_target": f"s3://{S3_BUCKET_NAME}/{S3_OBJECT_KEY}",
-                "etag": etag,
+                "total_usgs_quakes": total_quakes,
+                "incidents_logged_to_dynamodb": logged_incidents,
+                "dynamodb_table": DYNAMODB_TABLE_NAME,
+                "s3_cache": s3_status,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }),
         }
 
     except Exception as exc:
-        logger.exception("TerraPulse ingestion pipeline encountered an error: %s", str(exc))
+        logger.exception("Lambda handler error: %s", exc)
         return {
             "statusCode": 500,
             "body": json.dumps({
