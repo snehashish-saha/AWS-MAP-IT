@@ -1,6 +1,7 @@
 # 🌊 TerraPulse SUBSEA — The Physical Internet & Undersea Cloud Choke Points
 > **A mission-control spatial intelligence console exploring the seabed fiber substrate of the global internet, strategic maritime chokepoints, AWS infrastructure, and real-time seismic exposure.**  
-> *Built for the AWS Weekend Challenge: Map It (October 30 – November 2, 2026).*
+> *Built for the AWS Weekend Challenge: Map It (October 30 – November 2, 2026).*  
+> **Live Web Application:** [https://main.d348k8c7lj2tem.amplifyapp.com](https://main.d348k8c7lj2tem.amplifyapp.com)
 
 [![AWS Cloud](https://img.shields.io/badge/AWS-Amazon%20Location%20Service-FF9900?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/location/)
 [![Hosting](https://img.shields.io/badge/AWS-S3%20%2B%20CloudFront-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/s3/)
