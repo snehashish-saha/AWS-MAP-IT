@@ -106,6 +106,38 @@ export const InsightCard: React.FC<InsightCardProps> = ({ selectedEntity, onClos
               </div>
             )}
 
+            {selectedEntity.data.suppliers && (
+              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                <div className="text-xs text-subsea-muted mb-1">Optical Suppliers</div>
+                <div className="text-xs text-subsea-text leading-relaxed">
+                  {selectedEntity.data.suppliers}
+                </div>
+              </div>
+            )}
+
+            {selectedEntity.data.landing_points && (
+              <div className="p-3 rounded-lg bg-black/30 border border-white/5">
+                <div className="text-xs text-subsea-muted mb-1">Landing Stations</div>
+                <div className="text-xs text-subsea-cyan/90 leading-relaxed font-mono text-[11px]">
+                  {selectedEntity.data.landing_points}
+                </div>
+              </div>
+            )}
+
+            {selectedEntity.data.url && (
+              <div className="pt-0.5">
+                <a
+                  href={selectedEntity.data.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-subsea-cyan hover:underline font-mono"
+                >
+                  <Globe className="w-3.5 h-3.5" /> Official System Portal
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+
             <div className="text-[11px] text-subsea-muted/80 bg-white/[0.02] p-2.5 rounded-lg border border-white/5">
               Route geometry is based on surveyed and publicly charted paths. Hover illuminates line segments; click isolates route across ocean basins.
             </div>

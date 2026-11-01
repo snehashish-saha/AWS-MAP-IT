@@ -83,14 +83,13 @@ export type SubseaCableProperties = {
   coordinates?: [number, number];
   length?: string;
   owners?: string;
+  suppliers?: string;
   rfs?: string;
   rfs_year?: number;
   is_planned?: boolean;
-  landing_points?: Array<{
-    id: string;
-    name: string;
-    country?: string;
-  }>;
+  url?: string;
+  notes?: string;
+  landing_points?: any;
 };
 
 export type SubseaCableFeature = {

@@ -292,6 +292,27 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             'line-opacity': 1.0,
           },
         });
+
+        // Transparent generous hitbox layer (16-24px) for effortless mouse targeting & clicking
+        map.addLayer({
+          id: 'cables-hitbox',
+          type: 'line',
+          source: 'subsea-cables',
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round',
+          },
+          paint: {
+            'line-color': '#FFFFFF',
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              1.5, 14,
+              5, 18,
+              10, 24
+            ],
+            'line-opacity': 0.001,
+          },
+        });
       }
 
       // 3. Landing Points Source & Layer
@@ -455,8 +476,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   };
 
   const setupMapInteractions = (map: maplibregl.Map) => {
-    // Click on Cable
-    map.on('click', 'cables-line', (e) => {
+    // Click on Cable (bound to both generous hitbox and visual line for 100% reliable clicks)
+    const handleCableClick = (e: maplibregl.MapLayerMouseEvent) => {
       if (!e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const props = feat.properties as any;
@@ -467,18 +488,29 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           name: props.name,
           length: props.length,
           owners: props.owners,
+          suppliers: props.suppliers,
           rfs: props.rfs,
           rfs_year: props.rfs_year ? Number(props.rfs_year) : undefined,
+          url: props.url,
+          landing_points: props.landing_points,
         },
       });
-    });
+    };
 
-    map.on('mouseenter', 'cables-line', () => {
+    map.on('click', 'cables-hitbox', handleCableClick);
+    map.on('click', 'cables-line', handleCableClick);
+
+    const handleCableEnter = () => {
       map.getCanvas().style.cursor = 'pointer';
-    });
-    map.on('mouseleave', 'cables-line', () => {
+    };
+    const handleCableLeave = () => {
       map.getCanvas().style.cursor = '';
-    });
+    };
+
+    map.on('mouseenter', 'cables-hitbox', handleCableEnter);
+    map.on('mouseleave', 'cables-hitbox', handleCableLeave);
+    map.on('mouseenter', 'cables-line', handleCableEnter);
+    map.on('mouseleave', 'cables-line', handleCableLeave);
 
     // Click on Landing Point
     map.on('click', 'landing-points-circle', (e) => {
@@ -617,6 +649,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       }
     };
 
+    toggle('cables-hitbox', layerVisibility.cables);
     toggle('cables-glow', layerVisibility.cables);
     toggle('cables-line', layerVisibility.cables);
     toggle('cables-selected', layerVisibility.cables);

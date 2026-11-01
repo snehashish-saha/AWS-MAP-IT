@@ -307,11 +307,7 @@ export function App() {
 
       {/* 7. Bottom Micro Telemetry & Attribution */}
       <BottomMetaStrip
-        cablesCount={cablesData?.features.length || 733}
-        landingCount={landingPointsData?.features.length || 1928}
-        awsRegionsCount={AWS_REGIONS.length}
-        quakesCount={visibleEarthquakes.length}
-        alertsCount={exposureAlerts.length}
+        onOpenInfo={() => setIsInfoOpen(true)}
       />
 
       {/* 8. Command Palette (⌘K) */}

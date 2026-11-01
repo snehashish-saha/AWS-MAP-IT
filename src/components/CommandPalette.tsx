@@ -58,16 +58,53 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   if (!isOpen) return null;
 
-  // Filtered lists
-  const filteredCables = cables
-    .filter((c) => c.properties.name?.toLowerCase().includes(search.toLowerCase()))
-    .slice(0, 8);
+  // Deduplicate cables and extract unique entries with rich metadata
+  const uniqueCables = React.useMemo(() => {
+    const map = new Map<string, SubseaCableFeature>();
+    for (const c of cables) {
+      const id = c.properties?.id;
+      if (id && !map.has(id)) {
+        map.set(id, c);
+      }
+    }
+    return Array.from(map.values());
+  }, [cables]);
 
-  const filteredRegions = AWS_REGIONS.filter(
-    (r) =>
-      r.code.toLowerCase().includes(search.toLowerCase()) ||
-      r.name.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 6);
+  const q = search.toLowerCase().trim();
+
+  const filteredCables = React.useMemo(() => {
+    if (!q) return uniqueCables.slice(0, 8);
+    return uniqueCables.filter((c) => {
+      const p = c.properties;
+      return (
+        p.name?.toLowerCase().includes(q) ||
+        p.id?.toLowerCase().includes(q) ||
+        p.owners?.toLowerCase().includes(q) ||
+        p.suppliers?.toLowerCase().includes(q) ||
+        p.landing_points?.toLowerCase().includes(q)
+      );
+    }).slice(0, 30);
+  }, [uniqueCables, q]);
+
+  const filteredRegions = React.useMemo(() => {
+    if (!q) return AWS_REGIONS.slice(0, 6);
+    return AWS_REGIONS.filter(
+      (r) =>
+        r.code.toLowerCase().includes(q) ||
+        r.name.toLowerCase().includes(q) ||
+        r.continent.toLowerCase().includes(q)
+    ).slice(0, 6);
+  }, [q]);
+
+  const filteredChokepoints = React.useMemo(() => {
+    if (!q) return CHOKEPOINT_PRESETS;
+    return CHOKEPOINT_PRESETS.filter(
+      (cp) =>
+        cp.name.toLowerCase().includes(q) ||
+        cp.id.toLowerCase().includes(q) ||
+        cp.description.toLowerCase().includes(q)
+    );
+  }, [q]);
 
   const handleSelectCable = (cable: SubseaCableFeature) => {
     onSelectEntity({
@@ -93,7 +130,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="w-full max-w-xl glass-panel rounded-2xl shadow-2xl border border-subsea-cyan/30 overflow-hidden">
-        <Command label="Global Command Palette">
+        <Command label="Global Command Palette" shouldFilter={false}>
           {/* Search Input Bar */}
           <div className="flex items-center px-4 border-b border-subsea-border">
             <Search className="w-4 h-4 text-subsea-cyan mr-3 flex-shrink-0" />
@@ -101,7 +138,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               autoFocus
               value={search}
               onValueChange={setSearch}
-              placeholder="Search subsea cables, AWS regions, chokepoints, or ask Copilot..."
+              placeholder="Search cables, owners, AWS regions, chokepoints..."
               className="w-full py-4 bg-transparent text-sm text-subsea-text placeholder-subsea-muted focus:outline-none font-sans"
             />
             <button
@@ -118,60 +155,64 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               No matching cables or infrastructure found.
             </Command.Empty>
 
-            {/* Quick Actions / Copilot Shortcuts */}
-            <Command.Group heading="Navigation & Modes" className="text-[10px] font-semibold text-subsea-muted uppercase tracking-wider px-2 py-1">
-              <Command.Item
-                onSelect={() => {
-                  onStartStoryMode();
-                  onClose();
-                }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-purple/20 hover:text-subsea-purple cursor-pointer transition-colors"
-              >
-                <BookOpen className="w-4 h-4 text-subsea-purple" />
-                <span className="font-medium">Launch Story Mode Tour (5 Chapters)</span>
-              </Command.Item>
+            {/* Quick Actions / Copilot Shortcuts (only show when not searching) */}
+            {!q && (
+              <Command.Group heading="Navigation & Modes" className="text-[10px] font-semibold text-subsea-muted uppercase tracking-wider px-2 py-1">
+                <Command.Item
+                  onSelect={() => {
+                    onStartStoryMode();
+                    onClose();
+                  }}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-purple/20 hover:text-subsea-purple cursor-pointer transition-colors"
+                >
+                  <BookOpen className="w-4 h-4 text-subsea-purple" />
+                  <span className="font-medium">Launch Story Mode Tour (5 Chapters)</span>
+                </Command.Item>
 
-              <Command.Item
-                onSelect={() => {
-                  onFilterAlerts();
-                  onClose();
-                }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-amber/20 hover:text-subsea-amber cursor-pointer transition-colors"
-              >
-                <Filter className="w-4 h-4 text-subsea-amber" />
-                <span className="font-medium">Filter to Potential Seismic Exposure Alerts</span>
-              </Command.Item>
+                <Command.Item
+                  onSelect={() => {
+                    onFilterAlerts();
+                    onClose();
+                  }}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-amber/20 hover:text-subsea-amber cursor-pointer transition-colors"
+                >
+                  <Filter className="w-4 h-4 text-subsea-amber" />
+                  <span className="font-medium">Filter to Potential Seismic Exposure Alerts</span>
+                </Command.Item>
 
-              <Command.Item
-                onSelect={() => {
-                  onSelectChokepoint(null);
-                  onClose();
-                }}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-cyan/20 hover:text-subsea-cyan cursor-pointer transition-colors"
-              >
-                <Compass className="w-4 h-4 text-subsea-cyan" />
-                <span className="font-medium">Reset Camera to Global Perspective</span>
-              </Command.Item>
-            </Command.Group>
+                <Command.Item
+                  onSelect={() => {
+                    onSelectChokepoint(null);
+                    onClose();
+                  }}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-cyan/20 hover:text-subsea-cyan cursor-pointer transition-colors"
+                >
+                  <Compass className="w-4 h-4 text-subsea-cyan" />
+                  <span className="font-medium">Reset Camera to Global Perspective</span>
+                </Command.Item>
+              </Command.Group>
+            )}
 
             {/* Chokepoints */}
-            <Command.Group heading="Strategic Chokepoints" className="text-[10px] font-semibold text-subsea-muted uppercase tracking-wider px-2 py-1 pt-2 border-t border-white/5">
-              {CHOKEPOINT_PRESETS.map((preset) => (
-                <Command.Item
-                  key={preset.id}
-                  onSelect={() => handleSelectChokepoint(preset)}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-white/5 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Anchor className="w-4 h-4 text-subsea-amber" />
-                    <span>{preset.name}</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-subsea-muted">
-                    ~{preset.cableCountApprox} cables
-                  </span>
-                </Command.Item>
-              ))}
-            </Command.Group>
+            {filteredChokepoints.length > 0 && (
+              <Command.Group heading="Strategic Chokepoints" className="text-[10px] font-semibold text-subsea-muted uppercase tracking-wider px-2 py-1 pt-2 border-t border-white/5">
+                {filteredChokepoints.map((preset) => (
+                  <Command.Item
+                    key={preset.id}
+                    onSelect={() => handleSelectChokepoint(preset)}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-white/5 cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Anchor className="w-4 h-4 text-subsea-amber" />
+                      <span>{preset.name}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-subsea-muted">
+                      ~{preset.cableCountApprox} cables
+                    </span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
 
             {/* AWS Regions */}
             {filteredRegions.length > 0 && (
@@ -201,14 +242,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 {filteredCables.map((cable) => (
                   <Command.Item
                     key={cable.properties.id}
+                    value={cable.properties.id}
                     onSelect={() => handleSelectCable(cable)}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-white/5 cursor-pointer transition-colors"
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg text-xs text-subsea-text hover:bg-white/5 cursor-pointer transition-colors"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <Radio className="w-4 h-4 text-subsea-cyan" />
-                      <span className="font-medium text-subsea-cyan">{cable.properties.name}</span>
+                    <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                      <Radio className="w-4 h-4 text-subsea-cyan shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-medium text-subsea-cyan truncate">{cable.properties.name}</div>
+                        {(cable.properties.owners || cable.properties.suppliers) && (
+                          <div className="text-[10px] text-subsea-muted truncate">
+                            {cable.properties.owners || cable.properties.suppliers}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono text-subsea-muted">
+                    <span className="text-[10px] font-mono text-subsea-muted shrink-0">
                       {cable.properties.length || 'Length unlisted'}
                     </span>
                   </Command.Item>
