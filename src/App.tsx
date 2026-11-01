@@ -23,7 +23,6 @@ import { ChokepointBar } from './components/ChokepointBar';
 import { StoryModeOverlay } from './components/StoryModeOverlay';
 import { CommandPalette } from './components/CommandPalette';
 import { AboutModal } from './components/AboutModal';
-import { SettingsModal } from './components/SettingsModal';
 import { CinematicIntro } from './components/CinematicIntro';
 import { BottomMetaStrip } from './components/BottomMetaStrip';
 
@@ -52,18 +51,17 @@ export function App() {
 
   // Modals & Panels State
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
   const [showIntro, setShowIntro] = useState<boolean>(() => {
     return !sessionStorage.getItem('terrapulse_intro_seen');
   });
 
-  // Amazon Location Settings (Persisted in localStorage)
-  const [amazonLocationKey, setAmazonLocationKey] = useState<string>(() => {
-    return localStorage.getItem('TERRAPULSE_AWS_LOCATION_KEY') || '';
+  // Amazon Location Settings (Persisted in localStorage or environment variable)
+  const [amazonLocationKey] = useState<string>(() => {
+    return localStorage.getItem('TERRAPULSE_AWS_LOCATION_KEY') || (import.meta.env.VITE_AWS_LOCATION_API_KEY as string) || '';
   });
-  const [amazonLocationRegion, setAmazonLocationRegion] = useState<string>(() => {
-    return localStorage.getItem('TERRAPULSE_AWS_LOCATION_REGION') || 'us-east-1';
+  const [amazonLocationRegion] = useState<string>(() => {
+    return localStorage.getItem('TERRAPULSE_AWS_LOCATION_REGION') || (import.meta.env.VITE_AWS_LOCATION_REGION as string) || 'us-east-1';
   });
 
   // Load Subsea Infrastructure Datasets on Mount
@@ -191,24 +189,12 @@ export function App() {
     sessionStorage.setItem('terrapulse_intro_seen', 'true');
   };
 
-  // Save Settings Handlers
-  const handleSaveApiKey = (key: string) => {
-    setAmazonLocationKey(key);
-    localStorage.setItem('TERRAPULSE_AWS_LOCATION_KEY', key);
-  };
-
-  const handleSaveRegion = (reg: string) => {
-    setAmazonLocationRegion(reg);
-    localStorage.setItem('TERRAPULSE_AWS_LOCATION_REGION', reg);
-  };
-
   // Keyboard Shortcuts (Esc to close/clear)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (showIntro) handleDismissIntro();
         else if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
-        else if (isSettingsOpen) setIsSettingsOpen(false);
         else if (isInfoOpen) setIsInfoOpen(false);
         else if (storyStepIndex !== null) setStoryStepIndex(null);
         else if (selectedEntity) setSelectedEntity(null);
@@ -221,7 +207,6 @@ export function App() {
   }, [
     showIntro,
     isCommandPaletteOpen,
-    isSettingsOpen,
     isInfoOpen,
     storyStepIndex,
     selectedEntity,
@@ -254,7 +239,6 @@ export function App() {
       {/* 2. Slim Floating Top Bar */}
       <TopBar
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenInfo={() => setIsInfoOpen(true)}
         isLoadingData={isLoadingData}
         activeFeed={activeFeed}
@@ -327,17 +311,7 @@ export function App() {
         onClose={() => setIsInfoOpen(false)}
       />
 
-      {/* 10. Settings Modal (Amazon Location Key) */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        apiKey={amazonLocationKey}
-        onSaveApiKey={handleSaveApiKey}
-        region={amazonLocationRegion}
-        onSaveRegion={handleSaveRegion}
-      />
-
-      {/* 11. Cinematic Intro (Skippable, Once per session) */}
+      {/* 10. Cinematic Intro (Skippable, Once per session) */}
       {showIntro && <CinematicIntro onDismiss={handleDismissIntro} />}
     </div>
   );

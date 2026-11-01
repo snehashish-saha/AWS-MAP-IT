@@ -1,9 +1,8 @@
 import React from 'react';
-import { Radio, Search, Settings, Info, Cloud } from 'lucide-react';
+import { Radio, Search, Info, Cloud } from 'lucide-react';
 
 interface TopBarProps {
   onOpenCommandPalette: () => void;
-  onOpenSettings: () => void;
   onOpenInfo: () => void;
   isLoadingData: boolean;
   activeFeed: string;
@@ -12,7 +11,6 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({
   onOpenCommandPalette,
-  onOpenSettings,
   onOpenInfo,
   isLoadingData,
   activeFeed,
@@ -73,16 +71,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
       </div>
 
-      {/* Right: Modals & Settings Actions */}
+      {/* Right: Info / Architecture Modal Action */}
       <div className="flex items-center gap-2 pointer-events-auto">
-        <button
-          onClick={onOpenSettings}
-          className="glass-panel p-2.5 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-colors border border-white/10"
-          title="Amazon Location & Settings"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
-
         <button
           onClick={onOpenInfo}
           className="glass-panel p-2.5 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-colors border border-white/10"
