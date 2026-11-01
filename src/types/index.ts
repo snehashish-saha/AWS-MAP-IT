@@ -53,23 +53,12 @@ export type EarthquakeFeatureCollection = {
 
 export type FeedType = '1h' | '24h' | '7d' | '30d' | '4.5_week' | 'significant_week';
 
-export type LayerMode = 'earthquakes' | 'weather' | 'both';
-
 export type RegionPreset = {
   id: string;
   name: string;
-  bounds: [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
+  bounds: [number, number, number, number];
   center: [number, number];
   zoom: number;
-};
-
-export type FilterState = {
-  feed: FeedType;
-  minMagnitude: number;
-  maxMagnitude: number;
-  searchQuery: string;
-  selectedRegion: string; // 'global' or region id
-  layerMode: LayerMode;
 };
 
 export type TelemetryMetrics = {
@@ -78,73 +67,152 @@ export type TelemetryMetrics = {
   maxMagnitude: number;
   strongestEvent: EarthquakeFeature | null;
   averageMagnitude: number;
-  shallowCount: number; // depth <= 70km
-  intermediateCount: number; // 70 < depth <= 300km
-  deepCount: number; // depth > 300km
+  shallowCount: number;
+  intermediateCount: number;
+  deepCount: number;
   tsunamiCount: number;
   magnitudeBuckets: { range: string; count: number; color: string }[];
 };
 
-export type CurrentWeather = {
-  time: string;
-  temperature: number;
-  apparent_temperature: number;
-  relative_humidity: number;
-  precipitation: number;
-  weather_code: number;
-  cloud_cover: number;
-  wind_speed: number;
-  wind_direction: number;
-  wind_gusts?: number;
+// --- Subsea Cable Types ---
+export type SubseaCableProperties = {
+  id: string;
+  name: string;
+  color?: string;
+  feature_id?: string;
+  coordinates?: [number, number];
+  length?: string;
+  owners?: string;
+  rfs?: string;
+  rfs_year?: number;
+  is_planned?: boolean;
+  landing_points?: Array<{
+    id: string;
+    name: string;
+    country?: string;
+  }>;
 };
 
-export type HourlyForecast = {
-  times: string[];
-  temperatures: number[];
-  precipitation_probabilities: number[];
-  precipitations: number[];
-  weather_codes: number[];
-  wind_speeds: number[];
+export type SubseaCableFeature = {
+  type: 'Feature';
+  id?: string | number;
+  properties: SubseaCableProperties;
+  geometry: {
+    type: 'MultiLineString' | 'LineString';
+    coordinates: number[][][] | number[][];
+  };
 };
 
-export type LocationWeather = {
-  latitude: number;
-  longitude: number;
-  locationName?: string;
-  timezone: string;
-  elevation: number;
-  current: CurrentWeather;
-  hourly: HourlyForecast;
-  fetchedAt: number;
+export type SubseaCableCollection = {
+  type: 'FeatureCollection';
+  features: SubseaCableFeature[];
 };
 
+// --- Landing Point Types ---
+export type LandingPointProperties = {
+  id: string;
+  name: string;
+  is_tbd?: boolean;
+  cables?: Array<{ id: string; name: string }>;
+};
+
+export type LandingPointFeature = {
+  type: 'Feature';
+  id?: string | number;
+  properties: LandingPointProperties;
+  geometry: {
+    type: 'Point';
+    coordinates: [number, number];
+  };
+};
+
+export type LandingPointCollection = {
+  type: 'FeatureCollection';
+  features: LandingPointFeature[];
+};
+
+// --- AWS Region Types ---
+export type AWSRegion = {
+  id: string;
+  name: string;
+  code: string; // e.g. 'us-east-1'
+  coordinates: [number, number]; // [lng, lat]
+  continent: string;
+  launchYear: number;
+  description: string;
+};
+
+// --- Chokepoint Preset ---
+export type ChokepointPreset = {
+  id: string;
+  name: string;
+  subtitle: string;
+  description: string;
+  center: [number, number];
+  zoom: number;
+  pitch: number;
+  bearing: number;
+  cableCountApprox: number;
+  significance: string;
+};
+
+// --- Seismic Exposure Alert ---
+export type ExposureAlert = {
+  id: string;
+  earthquake: EarthquakeFeature;
+  nearestCable: {
+    id: string;
+    name: string;
+  };
+  distanceKm: number;
+  proximityCategory: 'critical' | 'warning' | 'advisory'; // <25km, 25-50km, 50-100km
+  timestamp: number;
+  lineGeometry?: [number, number][]; // Line from epicenter to closest point on cable
+};
+
+// --- Selected Entity Union ---
+export type SelectedEntity =
+  | { type: 'cable'; data: SubseaCableProperties }
+  | { type: 'landing_point'; data: LandingPointProperties }
+  | { type: 'aws_region'; data: AWSRegion }
+  | { type: 'exposure_alert'; data: ExposureAlert }
+  | { type: 'earthquake'; data: EarthquakeFeature };
+
+// --- Story Mode Step ---
+export type StoryStep = {
+  id: string;
+  chapter: number;
+  title: string;
+  subtitle: string;
+  narrative: string;
+  center: [number, number];
+  zoom: number;
+  pitch: number;
+  bearing: number;
+  highlightType?: 'cable' | 'chokepoint' | 'aws' | 'alert';
+  highlightId?: string;
+};
+
+// --- Layer Visibility State ---
+export type LayerVisibility = {
+  cables: boolean;
+  landingPoints: boolean;
+  awsRegions: boolean;
+  earthquakes: boolean;
+  alertsOnly: boolean;
+};
+
+// --- Copilot Intent ---
 export type MapIntent = {
   action:
-    | 'filter_earthquakes'
-    | 'focus_region'
-    | 'show_top_events'
-    | 'select_layer'
-    | 'inspect_weather'
-    | 'explain_selected_event'
-    | 'clear_filters';
-  timeRange?: '1h' | '24h' | '7d' | '30d';
+    | 'focus_chokepoint'
+    | 'filter_cables'
+    | 'show_alerts'
+    | 'focus_aws_region'
+    | 'select_cable'
+    | 'reset_view';
+  targetId?: string;
+  query?: string;
   minMagnitude?: number;
-  region?: string;
-  topN?: number;
-  layer?: LayerMode;
-  explanation?: string;
-  suggestedCoordinates?: [number, number];
-};
-
-export type ChatMessage = {
-  id: string;
-  sender: 'user' | 'assistant' | 'system';
-  text: string;
-  timestamp: number;
-  intent?: MapIntent;
-  evidence?: {
-    matchedEventsCount?: number;
-    strongestMag?: number;
-    targetRegion?: string;
-  };
+  explanation: string;
 };

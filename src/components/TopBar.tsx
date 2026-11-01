@@ -1,156 +1,106 @@
 import React from 'react';
-import { OrbitalLogo } from './Icons';
-import { Bot, HelpCircle, Settings, RefreshCw } from 'lucide-react';
-import type { LayerMode } from '../types';
+import { Radio, Search, Settings, Info, Cloud } from 'lucide-react';
 
 interface TopBarProps {
-  isLoading: boolean;
-  lastUpdated: number | null;
-  onRefresh: () => void;
-  activeLayer: LayerMode;
-  onLayerChange: (mode: LayerMode) => void;
-  isCopilotOpen: boolean;
-  onToggleCopilot: () => void;
-  onOpenInfo: () => void;
+  onOpenCommandPalette: () => void;
   onOpenSettings: () => void;
-  filteredCount: number;
-  totalCount: number;
+  onOpenInfo: () => void;
+  isLoadingData: boolean;
+  activeFeed: string;
+  alertsCount: number;
+  amazonLocationKey?: string;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
-  isLoading,
-  lastUpdated,
-  onRefresh,
-  activeLayer,
-  onLayerChange,
-  isCopilotOpen,
-  onToggleCopilot,
-  onOpenInfo,
+  onOpenCommandPalette,
   onOpenSettings,
-  filteredCount,
-  totalCount,
+  onOpenInfo,
+  isLoadingData,
+  activeFeed,
+  alertsCount,
+  amazonLocationKey,
 }) => {
-  const formatTime = (ts: number | null) => {
-    if (!ts) return 'Connecting...';
-    const diff = Math.floor((Date.now() - ts) / 1000);
-    if (diff < 60) return `${diff}s ago`;
-    return `${Math.floor(diff / 60)}m ago`;
-  };
-
   return (
-    <header className="h-14 bg-orbital-surface border-b border-orbital-border px-4 flex items-center justify-between z-30 select-none shadow-md">
-      {/* Brand & Mission */}
-      <div className="flex items-center space-x-3">
-        <div className="flex items-center space-x-2.5 cursor-pointer" onClick={onOpenInfo} title="TerraPulse Architecture & Documentation">
-          <OrbitalLogo size={28} />
+    <header className="fixed top-4 left-6 right-6 z-30 flex items-center justify-between pointer-events-none select-none">
+      {/* Left: Brand Identity & Live Status Chip */}
+      <div className="flex items-center gap-2.5 pointer-events-auto">
+        <div className="glass-panel px-3.5 py-2 rounded-2xl shadow-xl flex items-center gap-3 border border-white/10">
+          <div className="relative flex items-center justify-center">
+            <Radio className="w-5 h-5 text-subsea-cyan" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-subsea-cyan animate-ping" />
+          </div>
+
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="font-bold tracking-wider text-orbital-text text-base">TERRAPULSE</span>
-              <span className="text-[10px] tracking-widest font-mono uppercase px-1.5 py-0.5 rounded bg-orbital-border text-orbital-teal font-medium border border-orbital-teal/30">
-                AWS MAP IT
+            <div className="flex items-center gap-1.5 leading-none">
+              <span className="font-bold text-sm text-subsea-text tracking-tight font-sans">
+                TerraPulse
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-subsea-cyan text-black tracking-wider uppercase">
+                SUBSEA
               </span>
             </div>
-            <div className="text-[10px] tracking-wider text-orbital-muted font-medium flex items-center space-x-1.5">
-              <span>GLOBAL EARTH INTELLIGENCE</span>
-              <span>•</span>
-              <span className="text-emerald-400 flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1 animate-pulse"></span>
-                S3 HOSTED
-              </span>
+            <div className="text-[10px] text-subsea-muted font-medium mt-0.5 hidden sm:block">
+              The Physical Internet & Undersea Cloud Risk
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Center Feed Telemetry & Layer Switcher */}
-      <div className="hidden md:flex items-center space-x-4">
-        {/* Layer Mode Pills */}
-        <div className="flex items-center bg-orbital-bg border border-orbital-border rounded-lg p-0.5 text-xs">
-          <button
-            onClick={() => onLayerChange('earthquakes')}
-            className={`px-3 py-1 rounded-md font-medium transition-all ${
-              activeLayer === 'earthquakes'
-                ? 'bg-orbital-elevated text-orbital-coral shadow-sm border border-orbital-coral/30'
-                : 'text-orbital-muted hover:text-orbital-text'
-            }`}
-          >
-            Seismic (USGS)
-          </button>
-          <button
-            onClick={() => onLayerChange('weather')}
-            className={`px-3 py-1 rounded-md font-medium transition-all ${
-              activeLayer === 'weather'
-                ? 'bg-orbital-elevated text-orbital-weather shadow-sm border border-orbital-weather/30'
-                : 'text-orbital-muted hover:text-orbital-text'
-            }`}
-          >
-            Weather (Open-Meteo)
-          </button>
-          <button
-            onClick={() => onLayerChange('both')}
-            className={`px-3 py-1 rounded-md font-medium transition-all ${
-              activeLayer === 'both'
-                ? 'bg-orbital-elevated text-orbital-teal shadow-sm border border-orbital-teal/30'
-                : 'text-orbital-muted hover:text-orbital-text'
-            }`}
-          >
-            Dual Layer
-          </button>
-        </div>
+        {/* Live Feed Status Pill */}
+        <div className="hidden md:flex items-center gap-2 glass-panel px-3 py-2 rounded-2xl border border-white/10 text-xs">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-subsea-muted text-[11px] font-mono">USGS {activeFeed.toUpperCase()}</span>
+          {isLoadingData ? (
+            <span className="text-subsea-cyan font-mono text-[10px] animate-pulse">SYNCING</span>
+          ) : (
+            <span className="text-emerald-400 font-mono text-[10px] font-semibold">STREAMING</span>
+          )}
 
-        {/* Live sync pill */}
-        <div className="flex items-center space-x-2 text-xs bg-orbital-bg px-3 py-1 rounded-lg border border-orbital-border text-orbital-muted font-mono">
-          <span className={`w-2 h-2 rounded-full ${isLoading ? 'bg-orbital-amber animate-ping' : 'bg-orbital-teal'}`} />
-          <span className="text-orbital-text font-semibold">{filteredCount}</span>
-          <span>/</span>
-          <span>{totalCount} events</span>
-          <span className="text-orbital-border">|</span>
-          <span className="text-[11px]">{formatTime(lastUpdated)}</span>
-          <button
-            onClick={onRefresh}
-            title="Refresh feeds"
-            className="text-orbital-muted hover:text-orbital-teal transition ml-1"
-          >
-            <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
-          </button>
+          {amazonLocationKey && amazonLocationKey.trim() && (
+            <span className="flex items-center gap-1 text-[10px] font-mono text-subsea-cyan border-l border-white/10 pl-2">
+              <Cloud className="w-3 h-3" /> Amazon Location
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="flex items-center space-x-2">
-        {/* Copilot Drawer Toggle Button */}
+      {/* Center: Command Palette Trigger (Cmd+K) */}
+      <div className="pointer-events-auto">
         <button
-          onClick={onToggleCopilot}
-          className={`flex items-center space-x-2 text-xs px-3 py-1.5 rounded-lg border transition-all ${
-            isCopilotOpen
-              ? 'bg-orbital-teal/15 border-orbital-teal text-orbital-teal shadow-sm'
-              : 'bg-orbital-surface border-orbital-border text-orbital-text hover:border-orbital-teal/50'
-          }`}
-          title="Toggle Gemini 3.1 Flash-Lite Copilot"
+          onClick={onOpenCommandPalette}
+          className="glass-panel hover:bg-white/[0.06] transition-all px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 border border-white/10 text-xs text-subsea-muted group"
         >
-          <Bot size={15} className={isCopilotOpen ? 'text-orbital-teal animate-pulse' : 'text-orbital-muted'} />
-          <span className="font-medium hidden sm:inline">AI Copilot</span>
-          <span className="text-[10px] font-mono px-1 py-0.2 bg-orbital-bg rounded border border-orbital-border text-orbital-muted">
-            Gemini
-          </span>
+          <Search className="w-3.5 h-3.5 text-subsea-cyan group-hover:scale-110 transition-transform" />
+          <span className="hidden md:inline font-medium text-subsea-text/80">Search cables, AWS regions, chokepoints...</span>
+          <span className="inline md:hidden font-medium text-subsea-text/80">Search...</span>
+          <kbd className="hidden sm:inline font-mono text-[10px] bg-black/50 px-2 py-0.5 rounded-md border border-white/10 text-subsea-cyan font-semibold">
+            ⌘K
+          </kbd>
         </button>
+      </div>
 
-        {/* Documentation / Project Info */}
-        <button
-          onClick={onOpenInfo}
-          className="p-1.5 text-orbital-muted hover:text-orbital-text hover:bg-orbital-elevated rounded-lg transition border border-transparent hover:border-orbital-border"
-          title="Project Specification, AWS Architecture & Data Provenance"
-        >
-          <HelpCircle size={18} />
-        </button>
+      {/* Right: Modals & Settings Actions */}
+      <div className="flex items-center gap-2 pointer-events-auto">
+        {alertsCount > 0 && (
+          <div className="hidden xl:flex items-center gap-1.5 glass-panel px-3 py-2 rounded-2xl border border-subsea-amber/40 text-xs text-subsea-amber font-mono font-semibold">
+            <span className="w-2 h-2 rounded-full bg-subsea-amber animate-ping" />
+            <span>{alertsCount} POTENTIAL EXPOSURES</span>
+          </div>
+        )}
 
-        {/* Settings */}
         <button
           onClick={onOpenSettings}
-          className="p-1.5 text-orbital-muted hover:text-orbital-text hover:bg-orbital-elevated rounded-lg transition border border-transparent hover:border-orbital-border"
-          title="Settings & Gemini API Setup"
+          className="glass-panel p-2.5 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-colors border border-white/10"
+          title="Amazon Location & Settings"
         >
-          <Settings size={18} />
+          <Settings className="w-4 h-4" />
+        </button>
+
+        <button
+          onClick={onOpenInfo}
+          className="glass-panel p-2.5 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-colors border border-white/10"
+          title="Methodology, Architecture & Scientific Attribution"
+        >
+          <Info className="w-4 h-4" />
         </button>
       </div>
     </header>

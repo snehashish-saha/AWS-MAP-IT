@@ -1,356 +1,329 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type {
-  EarthquakeFeature,
+  SubseaCableCollection,
+  LandingPointCollection,
   EarthquakeFeatureCollection,
   FeedType,
-  LayerMode,
-  LocationWeather,
-  MapIntent,
-  ChatMessage,
+  LayerVisibility,
+  SelectedEntity,
+  ChokepointPreset,
 } from './types';
-import { USGS_FEEDS } from './constants/feeds';
-import { REGION_PRESETS } from './constants/regions';
-import { fetchEarthquakeFeed, filterEarthquakes, computeTelemetryMetrics } from './services/usgs';
-import { fetchLocationWeather } from './services/weather';
-import { askGeminiCopilot, type CopilotContext } from './services/gemini';
 
-import { TopBar } from './components/TopBar';
-import { LeftRail } from './components/LeftRail';
+import { fetchEarthquakeFeed } from './services/usgs';
+import { fetchSubseaCables, fetchLandingPoints } from './services/cables';
+import { computeCableExposureAlerts } from './services/proximity';
+import { STORY_STEPS } from './constants/chokepoints';
+import { AWS_REGIONS } from './constants/awsRegions';
+
 import { MapCanvas } from './components/MapCanvas';
-import { BottomTelemetryRail } from './components/BottomTelemetryRail';
-import { CopilotDrawer } from './components/CopilotDrawer';
-import { EventDetailPanel } from './components/EventDetailPanel';
-import { WeatherDetailPanel } from './components/WeatherDetailPanel';
-import { InfoModal } from './components/InfoModal';
+import { TopBar } from './components/TopBar';
+import { IntelligenceConsole } from './components/IntelligenceConsole';
+import { InsightCard } from './components/InsightCard';
+import { ChokepointBar } from './components/ChokepointBar';
+import { StoryModeOverlay } from './components/StoryModeOverlay';
+import { CommandPalette } from './components/CommandPalette';
+import { AboutModal } from './components/AboutModal';
 import { SettingsModal } from './components/SettingsModal';
+import { CinematicIntro } from './components/CinematicIntro';
+import { BottomMetaStrip } from './components/BottomMetaStrip';
 
 export function App() {
-  // Feed & Filter State
+  // Data Sources State
+  const [cablesData, setCablesData] = useState<SubseaCableCollection | null>(null);
+  const [landingPointsData, setLandingPointsData] = useState<LandingPointCollection | null>(null);
+  const [earthquakesData, setEarthquakesData] = useState<EarthquakeFeatureCollection | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+
+  // Filters & Controls State
   const [activeFeed, setActiveFeed] = useState<FeedType>('24h');
-  const [minMagnitude, setMinMagnitude] = useState<number>(0);
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedRegion, setSelectedRegion] = useState<string>('global');
-  const [layerMode, setLayerMode] = useState<LayerMode>('both');
+  const [minMagnitude, setMinMagnitude] = useState<number>(4.0);
+  const [layerVisibility, setLayerVisibility] = useState<LayerVisibility>({
+    cables: true,
+    landingPoints: true,
+    awsRegions: true,
+    earthquakes: true,
+    alertsOnly: false,
+  });
 
-  // Raw & Processed Data State
-  const [rawData, setRawData] = useState<EarthquakeFeatureCollection | null>(null);
-  const [isLoadingFeed, setIsLoadingFeed] = useState<boolean>(true);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [_feedError, setFeedError] = useState<string | null>(null);
+  // Selection & Navigation State
+  const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);
+  const [activeChokepoint, setActiveChokepoint] = useState<ChokepointPreset | null>(null);
+  const [storyStepIndex, setStoryStepIndex] = useState<number | null>(null);
 
-  // Selection & Details State
-  const [selectedEvent, setSelectedEvent] = useState<EarthquakeFeature | null>(null);
-  const [topNEvents, setTopNEvents] = useState<EarthquakeFeature[]>([]);
-  const [selectedWeather, setSelectedWeather] = useState<LocationWeather | null>(null);
-  const [isLoadingWeather, setIsLoadingWeather] = useState<boolean>(false);
-  const [showWeatherDetail, setShowWeatherDetail] = useState<boolean>(false);
-
-  // UI Drawer / Modal State
-  const [isLeftRailCollapsed, setIsLeftRailCollapsed] = useState<boolean>(false);
-  const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
-  const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
+  // Modals & Panels State
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
+  const [showIntro, setShowIntro] = useState<boolean>(() => {
+    return !sessionStorage.getItem('terrapulse_intro_seen');
+  });
 
-  // Settings State (persisted in localStorage)
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('TERRAPULSE_GEMINI_KEY') || '');
-  const [proxyUrl, setProxyUrl] = useState<string>(() => localStorage.getItem('TERRAPULSE_PROXY_URL') || '');
+  // Amazon Location Settings (Persisted in localStorage)
+  const [amazonLocationKey, setAmazonLocationKey] = useState<string>(() => {
+    return localStorage.getItem('TERRAPULSE_AWS_LOCATION_KEY') || '';
+  });
+  const [amazonLocationRegion, setAmazonLocationRegion] = useState<string>(() => {
+    return localStorage.getItem('TERRAPULSE_AWS_LOCATION_REGION') || 'us-east-1';
+  });
 
-  // Copilot Conversation State
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome-1',
-      sender: 'assistant',
-      text: 'Welcome to TerraPulse Global Earth Intelligence. I am your geospatial copilot. Ask me to navigate tectonic boundaries, filter seismic intensity, or inspect atmospheric conditions.',
-      timestamp: Date.now(),
-    },
-  ]);
-  const [isCopilotLoading, setIsCopilotLoading] = useState<boolean>(false);
+  // Load Subsea Infrastructure Datasets on Mount
+  useEffect(() => {
+    async function loadInfrastructure() {
+      try {
+        const [cables, landings] = await Promise.all([
+          fetchSubseaCables(),
+          fetchLandingPoints(),
+        ]);
+        setCablesData(cables);
+        setLandingPointsData(landings);
+      } catch (err) {
+        console.error('Failed loading infrastructure data:', err);
+      }
+    }
+    loadInfrastructure();
+  }, []);
 
-  // Load USGS Data Feed
-  const loadFeed = useCallback(async (feedType: FeedType) => {
-    setIsLoadingFeed(true);
-    setFeedError(null);
+  // Load USGS Live Feeds
+  const loadFeed = useCallback(async (feed: FeedType) => {
+    setIsLoadingData(true);
     try {
-      const data = await fetchEarthquakeFeed(feedType);
-      setRawData(data);
-      setLastUpdated(Date.now());
-    } catch (err: any) {
-      console.error('Failed to load USGS feed:', err);
-      setFeedError(err.message || 'Error contacting USGS feeds');
+      const quakes = await fetchEarthquakeFeed(feed);
+      setEarthquakesData(quakes);
+    } catch (err) {
+      console.error('Failed loading USGS feed:', err);
     } finally {
-      setIsLoadingFeed(false);
+      setIsLoadingData(false);
     }
   }, []);
 
   useEffect(() => {
     loadFeed(activeFeed);
+    const interval = setInterval(() => loadFeed(activeFeed), 120000); // 2 min refresh
+    return () => clearInterval(interval);
   }, [activeFeed, loadFeed]);
 
-  // Periodic feed refresh
-  useEffect(() => {
-    const config = USGS_FEEDS[activeFeed];
-    const timer = setInterval(() => {
-      loadFeed(activeFeed);
-    }, config.refreshIntervalMs);
+  // Pre-calculate proximity alerts once per feed for all quakes >= M2.5
+  const allFeedExposureAlerts = useMemo(() => {
+    if (!cablesData || !earthquakesData?.features.length) return [];
+    return computeCableExposureAlerts(
+      earthquakesData.features,
+      cablesData.features,
+      100, // 100 km physical buffer
+      2.5  // Pre-compute down to M2.5
+    );
+  }, [cablesData, earthquakesData]);
 
-    return () => clearInterval(timer);
-  }, [activeFeed, loadFeed]);
+  // Instant in-memory magnitude filter for exposure alerts (0ms lag when dragging slider)
+  const exposureAlerts = useMemo(() => {
+    return allFeedExposureAlerts.filter(
+      (a) => (a.earthquake.properties.mag ?? 0) >= minMagnitude
+    );
+  }, [allFeedExposureAlerts, minMagnitude]);
 
-  // Compute Filtered Features
-  const filteredFeatures = useMemo(() => {
-    if (!rawData) return [];
+  // Filtered Earthquakes (instant 0ms filter)
+  const filteredEarthquakes = useMemo(() => {
+    if (!earthquakesData) return [];
+    return earthquakesData.features.filter((eq) => {
+      const mag = eq.properties.mag ?? 0;
+      return mag >= minMagnitude;
+    });
+  }, [earthquakesData, minMagnitude]);
 
-    let bounds: [number, number, number, number] | null = null;
-    if (selectedRegion !== 'global') {
-      const preset = REGION_PRESETS.find((r) => r.id === selectedRegion);
-      if (preset) {
-        bounds = preset.bounds;
-      }
+  // Final visible earthquakes (filtered if "alertsOnly" is checked)
+  const visibleEarthquakes = useMemo(() => {
+    if (!layerVisibility.alertsOnly) return filteredEarthquakes;
+    const alertQuakeIds = new Set(exposureAlerts.map((a) => a.earthquake.id));
+    return filteredEarthquakes.filter((eq) => alertQuakeIds.has(eq.id));
+  }, [filteredEarthquakes, exposureAlerts, layerVisibility.alertsOnly]);
+
+  // Handle Layer Toggle
+  const handleToggleLayer = (layer: keyof LayerVisibility) => {
+    setLayerVisibility((prev) => ({ ...prev, [layer]: !prev[layer] }));
+  };
+
+  // Handle Chokepoint Selection
+  const handleSelectChokepoint = (preset: ChokepointPreset | null) => {
+    setActiveChokepoint(preset);
+    setStoryStepIndex(null);
+  };
+
+  // Story Mode Handlers
+  const handleStartStoryMode = () => {
+    setStoryStepIndex(0);
+    setActiveChokepoint(null);
+    setSelectedEntity(null);
+  };
+
+  const handleNextStoryStep = () => {
+    if (storyStepIndex === null) return;
+    if (storyStepIndex < STORY_STEPS.length - 1) {
+      setStoryStepIndex(storyStepIndex + 1);
+    } else {
+      setStoryStepIndex(null); // Finish
     }
+  };
 
-    return filterEarthquakes(rawData.features, minMagnitude, searchQuery, bounds);
-  }, [rawData, minMagnitude, searchQuery, selectedRegion]);
+  const handlePrevStoryStep = () => {
+    if (storyStepIndex === null || storyStepIndex === 0) return;
+    setStoryStepIndex(storyStepIndex - 1);
+  };
 
-  // Deterministic Telemetry Metrics
-  const metrics = useMemo(() => {
-    const total = rawData?.features?.length || 0;
-    return computeTelemetryMetrics(total, filteredFeatures);
-  }, [rawData, filteredFeatures]);
-
-  // Fetch Weather at Coordinate
-  const handleMapClickCoordinates = useCallback(async (lat: number, lng: number, locationName?: string) => {
-    setIsLoadingWeather(true);
-    try {
-      const weather = await fetchLocationWeather(lat, lng, locationName);
-      setSelectedWeather(weather);
-      setShowWeatherDetail(true);
-    } catch (err) {
-      console.error('Failed to fetch weather:', err);
-    } finally {
-      setIsLoadingWeather(false);
-    }
-  }, []);
-
-  // Handle Event Selection
-  const handleSelectEvent = useCallback((event: EarthquakeFeature | null) => {
-    setSelectedEvent(event);
-    if (event) {
-      const [lng, lat] = event.geometry.coordinates;
-      handleMapClickCoordinates(lat, lng, event.properties.place || undefined);
-    }
-  }, [handleMapClickCoordinates]);
-
-  // Reset Filters to default
-  const handleResetFilters = useCallback(() => {
-    setActiveFeed('24h');
-    setMinMagnitude(0);
-    setSearchQuery('');
-    setSelectedRegion('global');
-    setTopNEvents([]);
-    setSelectedEvent(null);
-  }, []);
-
-  // Execute Map Intent returned by Gemini Copilot
-  const handleApplyIntent = useCallback((intent: MapIntent) => {
-    if (intent.timeRange) {
-      setActiveFeed(intent.timeRange);
-    }
-    if (intent.minMagnitude !== undefined) {
-      setMinMagnitude(intent.minMagnitude);
-    }
-    if (intent.region) {
-      setSelectedRegion(intent.region);
-    }
-    if (intent.layer) {
-      setLayerMode(intent.layer);
-    }
-
-    if (intent.action === 'clear_filters') {
-      handleResetFilters();
-    } else if (intent.action === 'show_top_events') {
-      const n = intent.topN || 5;
-      const sorted = [...filteredFeatures]
-        .filter((f) => f.properties.mag !== null)
-        .sort((a, b) => (b.properties.mag ?? 0) - (a.properties.mag ?? 0))
-        .slice(0, n);
-      setTopNEvents(sorted);
-      if (sorted[0]) {
-        setSelectedEvent(sorted[0]);
-      }
-    } else if (intent.action === 'inspect_weather') {
-      if (selectedEvent) {
-        const [lng, lat] = selectedEvent.geometry.coordinates;
-        handleMapClickCoordinates(lat, lng, selectedEvent.properties.place || undefined);
-      } else if (selectedWeather) {
-        setShowWeatherDetail(true);
-      }
-    }
-  }, [filteredFeatures, handleResetFilters, selectedEvent, selectedWeather, handleMapClickCoordinates]);
-
-  // Send Message to Copilot
-  const handleSendMessage = useCallback(async (query: string) => {
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'user',
-      text: query,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsCopilotLoading(true);
-
-    const context: CopilotContext = {
-      activeFeed,
-      minMagnitude,
-      filteredCount: filteredFeatures.length,
-      totalCount: rawData?.features?.length || 0,
-      strongestEvent: metrics.strongestEvent,
-      selectedEvent,
-      selectedLocationWeather: selectedWeather,
-      selectedRegion,
-    };
-
-    try {
-      const { intent } = await askGeminiCopilot(query, context, apiKey, proxyUrl);
-      
-      // Automatically apply intent to the map
-      handleApplyIntent(intent);
-
-      const assistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        sender: 'assistant',
-        text: intent.explanation || 'Analyzed spatial query and updated map parameters.',
-        timestamp: Date.now(),
-        intent,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch (_err: any) {
-      const errorMsg: ChatMessage = {
-        id: `err-${Date.now()}`,
-        sender: 'assistant',
-        text: 'Encountered an issue processing query. Map controls remain fully operational.',
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setIsCopilotLoading(false);
-    }
-  }, [activeFeed, minMagnitude, filteredFeatures.length, rawData?.features?.length, metrics.strongestEvent, selectedEvent, selectedWeather, selectedRegion, apiKey, proxyUrl, handleApplyIntent]);
+  const handleDismissIntro = () => {
+    setShowIntro(false);
+    sessionStorage.setItem('terrapulse_intro_seen', 'true');
+  };
 
   // Save Settings Handlers
-  const handleSaveApiKey = (newKey: string) => {
-    setApiKey(newKey);
-    if (newKey) localStorage.setItem('TERRAPULSE_GEMINI_KEY', newKey);
-    else localStorage.removeItem('TERRAPULSE_GEMINI_KEY');
+  const handleSaveApiKey = (key: string) => {
+    setAmazonLocationKey(key);
+    localStorage.setItem('TERRAPULSE_AWS_LOCATION_KEY', key);
   };
 
-  const handleSaveProxyUrl = (newUrl: string) => {
-    setProxyUrl(newUrl);
-    if (newUrl) localStorage.setItem('TERRAPULSE_PROXY_URL', newUrl);
-    else localStorage.removeItem('TERRAPULSE_PROXY_URL');
+  const handleSaveRegion = (reg: string) => {
+    setAmazonLocationRegion(reg);
+    localStorage.setItem('TERRAPULSE_AWS_LOCATION_REGION', reg);
   };
 
-  const handleClearCache = () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    loadFeed(activeFeed);
-  };
+  // Keyboard Shortcuts (Esc to close/clear)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showIntro) handleDismissIntro();
+        else if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
+        else if (isSettingsOpen) setIsSettingsOpen(false);
+        else if (isInfoOpen) setIsInfoOpen(false);
+        else if (storyStepIndex !== null) setStoryStepIndex(null);
+        else if (selectedEntity) setSelectedEntity(null);
+        else if (activeChokepoint) setActiveChokepoint(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    showIntro,
+    isCommandPaletteOpen,
+    isSettingsOpen,
+    isInfoOpen,
+    storyStepIndex,
+    selectedEntity,
+    activeChokepoint,
+  ]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-orbital-bg text-orbital-text font-sans">
-      {/* Top Header Bar */}
-      <TopBar
-        isLoading={isLoadingFeed}
-        lastUpdated={lastUpdated}
-        onRefresh={() => loadFeed(activeFeed)}
-        activeLayer={layerMode}
-        onLayerChange={setLayerMode}
-        isCopilotOpen={isCopilotOpen}
-        onToggleCopilot={() => setIsCopilotOpen((prev) => !prev)}
-        onOpenInfo={() => setIsInfoOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        filteredCount={filteredFeatures.length}
-        totalCount={rawData?.features?.length || 0}
-      />
-
-      {/* Main Workspace Canvas */}
-      <div className="relative flex-1 flex overflow-hidden">
-        {/* Left Exploration Rail */}
-        <LeftRail
-          feed={activeFeed}
-          onFeedChange={setActiveFeed}
-          minMagnitude={minMagnitude}
-          onMinMagnitudeChange={setMinMagnitude}
-          selectedRegion={selectedRegion}
-          onRegionChange={setSelectedRegion}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          layerMode={layerMode}
-          onLayerModeChange={setLayerMode}
-          onResetFilters={handleResetFilters}
-          isCollapsed={isLeftRailCollapsed}
-          onToggleCollapse={() => setIsLeftRailCollapsed((prev) => !prev)}
-        />
-
-        {/* Central Map Canvas */}
+    <div className="relative w-screen h-screen bg-subsea-bg overflow-hidden flex flex-col font-sans select-none">
+      {/* 1. Full Bleed Map Canvas (The Hero) */}
+      <div className="absolute inset-0 z-0">
         <MapCanvas
-          data={rawData}
-          filteredFeatures={filteredFeatures}
-          selectedEvent={selectedEvent}
-          onSelectEvent={handleSelectEvent}
-          selectedWeather={selectedWeather}
-          onMapClickCoordinates={handleMapClickCoordinates}
-          selectedRegion={selectedRegion}
-          topNEvents={topNEvents}
-          layerMode={layerMode}
-          isLoadingWeather={isLoadingWeather}
-        />
-
-        {/* Floating Detail Panels */}
-        <EventDetailPanel
-          event={selectedEvent}
-          onClose={() => setSelectedEvent(null)}
-          onFetchWeather={(lat, lng) => handleMapClickCoordinates(lat, lng)}
-        />
-
-        {showWeatherDetail && selectedWeather && (
-          <WeatherDetailPanel
-            weather={selectedWeather}
-            onClose={() => setShowWeatherDetail(false)}
-          />
-        )}
-
-        {/* Right Gemini Copilot Drawer */}
-        <CopilotDrawer
-          isOpen={isCopilotOpen}
-          onClose={() => setIsCopilotOpen(false)}
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          isLoading={isCopilotLoading}
-          onApplyIntent={handleApplyIntent}
-          isCustomKeySet={Boolean(apiKey || proxyUrl)}
+          cablesData={cablesData}
+          landingPointsData={landingPointsData}
+          earthquakes={visibleEarthquakes}
+          alerts={exposureAlerts}
+          selectedEntity={selectedEntity}
+          onSelectEntity={setSelectedEntity}
+          layerVisibility={layerVisibility}
+          activeChokepoint={activeChokepoint}
+          storyStep={storyStepIndex !== null ? STORY_STEPS[storyStepIndex] : null}
+          amazonLocationKey={amazonLocationKey}
+          amazonLocationRegion={amazonLocationRegion}
         />
       </div>
 
-      {/* Bottom Telemetry Strip */}
-      <BottomTelemetryRail
-        metrics={metrics}
-        selectedWeather={selectedWeather}
-        onSelectEvent={handleSelectEvent}
-        feedLabel={USGS_FEEDS[activeFeed]?.label || activeFeed}
-        minMag={minMagnitude}
+      {/* Cinematic Orbital Vignette (Depth of field overlay) */}
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(7,10,18,0.75)_100%)] z-10" />
+
+      {/* 2. Slim Floating Top Bar */}
+      <TopBar
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenInfo={() => setIsInfoOpen(true)}
+        isLoadingData={isLoadingData}
+        activeFeed={activeFeed}
+        alertsCount={exposureAlerts.length}
+        amazonLocationKey={amazonLocationKey}
       />
 
-      {/* Modals */}
-      <InfoModal isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />
+      {/* 3. Subsea Intelligence Console (Collapsible Mission Control Drawer) */}
+      <IntelligenceConsole
+        layerVisibility={layerVisibility}
+        onToggleLayer={handleToggleLayer}
+        activeFeed={activeFeed}
+        onChangeFeed={setActiveFeed}
+        minMagnitude={minMagnitude}
+        onChangeMinMagnitude={setMinMagnitude}
+        alerts={exposureAlerts}
+        cablesCount={cablesData?.features.length || 733}
+        landingCount={landingPointsData?.features.length || 1928}
+        awsRegionsCount={AWS_REGIONS.length}
+        quakesCount={visibleEarthquakes.length}
+        onSelectEntity={setSelectedEntity}
+        onSelectChokepoint={handleSelectChokepoint}
+        activeChokepoint={activeChokepoint}
+      />
+
+      {/* 4. Floating Insight Card (Right - Entity Details) */}
+      <InsightCard
+        selectedEntity={selectedEntity}
+        onClose={() => setSelectedEntity(null)}
+      />
+
+      {/* 5. Bottom Chokepoints & Story Mode Pill Bar (Center) */}
+      <ChokepointBar
+        activeChokepoint={activeChokepoint}
+        onSelectChokepoint={handleSelectChokepoint}
+        onStartStoryMode={handleStartStoryMode}
+        isStoryModeActive={storyStepIndex !== null}
+      />
+
+      {/* 6. Story Mode Guided Tour Overlay */}
+      {storyStepIndex !== null && (
+        <StoryModeOverlay
+          currentStepIndex={storyStepIndex}
+          onNextStep={handleNextStoryStep}
+          onPrevStep={handlePrevStoryStep}
+          onSelectStepIndex={setStoryStepIndex}
+          onExitStoryMode={() => setStoryStepIndex(null)}
+        />
+      )}
+
+      {/* 7. Bottom Micro Telemetry & Attribution */}
+      <BottomMetaStrip
+        cablesCount={cablesData?.features.length || 733}
+        landingCount={landingPointsData?.features.length || 1928}
+        awsRegionsCount={AWS_REGIONS.length}
+        quakesCount={visibleEarthquakes.length}
+        alertsCount={exposureAlerts.length}
+      />
+
+      {/* 8. Command Palette (⌘K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        cables={cablesData?.features || []}
+        onSelectEntity={setSelectedEntity}
+        onSelectChokepoint={handleSelectChokepoint}
+        onStartStoryMode={handleStartStoryMode}
+        onFilterAlerts={() => setLayerVisibility((p) => ({ ...p, alertsOnly: true }))}
+      />
+
+      {/* 9. Methodology & Attribution Modal */}
+      <AboutModal
+        isOpen={isInfoOpen}
+        onClose={() => setIsInfoOpen(false)}
+      />
+
+      {/* 10. Settings Modal (Amazon Location Key) */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        apiKey={apiKey}
+        apiKey={amazonLocationKey}
         onSaveApiKey={handleSaveApiKey}
-        proxyUrl={proxyUrl}
-        onSaveProxyUrl={handleSaveProxyUrl}
-        onClearCache={handleClearCache}
+        region={amazonLocationRegion}
+        onSaveRegion={handleSaveRegion}
       />
+
+      {/* 11. Cinematic Intro (Skippable, Once per session) */}
+      {showIntro && <CinematicIntro onDismiss={handleDismissIntro} />}
     </div>
   );
 }

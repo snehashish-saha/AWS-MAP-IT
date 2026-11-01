@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { X, Key, Shield, RefreshCw, Check, ExternalLink } from 'lucide-react';
+import { X, Key, Cloud, Check } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   apiKey: string;
   onSaveApiKey: (key: string) => void;
-  proxyUrl: string;
-  onSaveProxyUrl: (url: string) => void;
-  onClearCache: () => void;
+  region: string;
+  onSaveRegion: (region: string) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -16,137 +15,105 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   apiKey,
   onSaveApiKey,
-  proxyUrl,
-  onSaveProxyUrl,
-  onClearCache,
+  region,
+  onSaveRegion,
 }) => {
   const [localKey, setLocalKey] = useState(apiKey);
-  const [localProxy, setLocalProxy] = useState(proxyUrl);
-  const [savedStatus, setSavedStatus] = useState(false);
+  const [localRegion, setLocalRegion] = useState(region);
+  const [saved, setSaved] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSaveApiKey(localKey.trim());
-    onSaveProxyUrl(localProxy.trim());
-    setSavedStatus(true);
+  const handleSave = () => {
+    onSaveApiKey(localKey);
+    onSaveRegion(localRegion);
+    setSaved(true);
     setTimeout(() => {
-      setSavedStatus(false);
+      setSaved(false);
       onClose();
     }, 800);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-orbital-surface border border-orbital-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-150">
+      <div className="w-full max-w-md glass-panel rounded-2xl shadow-2xl border border-subsea-border overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-orbital-border flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Key size={18} className="text-orbital-teal" />
-            <h2 className="text-sm font-bold text-orbital-text">AI Copilot & Environment Settings</h2>
+        <div className="flex items-center justify-between p-5 border-b border-subsea-border">
+          <div className="flex items-center gap-2">
+            <Cloud className="w-5 h-5 text-subsea-cyan" />
+            <h2 className="text-base font-bold text-subsea-text">
+              Amazon Location Service Configuration
+            </h2>
           </div>
           <button
             onClick={onClose}
-            className="text-orbital-muted hover:text-orbital-text p-1 rounded-lg hover:bg-orbital-elevated transition"
+            className="p-1 rounded-md text-subsea-muted hover:text-subsea-text hover:bg-white/5 transition-colors"
           >
-            <X size={16} />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSave} className="p-4 space-y-4 text-xs font-sans">
-          {/* API Key Safety Note */}
-          <div className="bg-orbital-bg/80 border border-orbital-border p-3 rounded-xl flex items-start space-x-2.5">
-            <Shield size={16} className="text-orbital-teal flex-shrink-0 mt-0.5" />
-            <div className="space-y-1 text-orbital-muted leading-relaxed text-[11px]">
-              <span className="font-semibold text-orbital-text block">Strict Key Security Compliance</span>
-              <span>
-                Your Gemini key is stored only in your browser's private local storage. It is never included in the production build bundle, S3 upload, or Git repository.
-              </span>
-            </div>
-          </div>
-
-          {/* Gemini API Key Input */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-orbital-text uppercase tracking-wider flex items-center justify-between">
-              <span>Google Gemini API Key (Optional)</span>
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-orbital-teal hover:underline inline-flex items-center space-x-0.5 text-[10px] font-mono"
-              >
-                <span>Get Free Key</span>
-                <ExternalLink size={9} />
-              </a>
+        {/* Body */}
+        <div className="p-6 space-y-5 text-xs text-subsea-muted">
+          <div>
+            <label className="block text-xs font-semibold text-subsea-text mb-1.5 flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-subsea-cyan" />
+              Amazon Location API Key (Optional)
             </label>
             <input
-              type="password"
+              type="text"
               value={localKey}
               onChange={(e) => setLocalKey(e.target.value)}
-              placeholder="AIzaSy..."
-              className="w-full bg-orbital-bg border border-orbital-border rounded-lg px-3 py-2 text-orbital-text font-mono text-xs focus:outline-none focus:border-orbital-teal"
+              placeholder="v1.public.eyJraWQiOi..."
+              className="w-full p-2.5 rounded-lg bg-black/50 border border-subsea-border text-subsea-text font-mono text-xs focus:outline-none focus:border-subsea-cyan/60"
             />
-            <p className="text-[10px] text-orbital-muted">
-              If left blank, TerraPulse uses its built-in deterministic action parser which mirrors the exact Gemini MapIntent schema offline.
+            <p className="text-[11px] text-subsea-muted mt-1.5 leading-relaxed">
+              Enables the Amazon Location Service Maps v2 Dark Style descriptor. If blank, TerraPulse uses the high-contrast offline scientific canvas fallback.
             </p>
           </div>
 
-          {/* Protected Proxy URL Input */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-orbital-text uppercase tracking-wider">
-              Protected Proxy URL (Optional Lambda / Cloudflare Worker)
+          <div>
+            <label className="block text-xs font-semibold text-subsea-text mb-1.5">
+              AWS Region
             </label>
-            <input
-              type="url"
-              value={localProxy}
-              onChange={(e) => setLocalProxy(e.target.value)}
-              placeholder="https://my-proxy.workers.dev/gemini"
-              className="w-full bg-orbital-bg border border-orbital-border rounded-lg px-3 py-2 text-orbital-text font-mono text-xs focus:outline-none focus:border-orbital-teal"
-            />
+            <select
+              value={localRegion}
+              onChange={(e) => setLocalRegion(e.target.value)}
+              className="w-full p-2.5 rounded-lg bg-black/50 border border-subsea-border text-subsea-text font-mono text-xs focus:outline-none focus:border-subsea-cyan/60"
+            >
+              <option value="us-east-1">us-east-1 (N. Virginia)</option>
+              <option value="us-west-2">us-west-2 (Oregon)</option>
+              <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+            </select>
           </div>
 
-          {/* Clear Cache Button */}
-          <div className="pt-2 border-t border-orbital-border flex items-center justify-between">
-            <div>
-              <div className="text-[11px] font-semibold text-orbital-text">Reset Local Data Cache</div>
-              <div className="text-[10px] text-orbital-muted">Clears cached USGS feeds and Open-Meteo forecasts</div>
-            </div>
-            <button
-              type="button"
-              onClick={onClearCache}
-              className="px-3 py-1.5 rounded-lg border border-orbital-border hover:border-orbital-coral/40 text-orbital-muted hover:text-orbital-coral text-xs transition flex items-center space-x-1"
-            >
-              <RefreshCw size={12} />
-              <span>Clear Cache</span>
-            </button>
+          <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5 text-[11px] text-subsea-muted">
+            Keys are saved in browser <code>localStorage</code> and are never transmitted to third-party endpoints or logged.
           </div>
+        </div>
 
-          {/* Submit / Save */}
-          <div className="pt-3 border-t border-orbital-border flex items-center justify-end space-x-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1.5 rounded-lg border border-orbital-border text-orbital-muted hover:text-orbital-text text-xs"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-1.5 rounded-lg bg-orbital-teal text-[#070B12] font-semibold text-xs hover:brightness-110 transition flex items-center space-x-1"
-            >
-              {savedStatus ? (
-                <>
-                  <Check size={14} />
-                  <span>Saved!</span>
-                </>
-              ) : (
-                <span>Save Preferences</span>
-              )}
-            </button>
-          </div>
-        </form>
+        {/* Footer */}
+        <div className="p-4 border-t border-subsea-border bg-black/30 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-subsea-muted hover:text-subsea-text transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-subsea-cyan text-black hover:bg-subsea-cyan/90 transition-colors flex items-center gap-1.5 shadow-glow-cyan"
+          >
+            {saved ? (
+              <>
+                <Check className="w-3.5 h-3.5" /> Saved
+              </>
+            ) : (
+              'Save & Apply'
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

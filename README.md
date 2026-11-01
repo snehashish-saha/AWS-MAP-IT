@@ -1,118 +1,125 @@
-# 🌍 TerraPulse — Global Earth Intelligence
-> **A map-first platform for real-time earthquake activity, atmospheric weather context, and AI-assisted geospatial exploration.**  
+# 🌊 TerraPulse SUBSEA — The Physical Internet & Undersea Cloud Choke Points
+> **A mission-control spatial intelligence console exploring the seabed fiber substrate of the global internet, strategic maritime chokepoints, AWS infrastructure, and real-time seismic exposure.**  
 > *Built for the AWS Weekend Challenge: Map It (October 30 – November 2, 2026).*
 
-[![AWS Cloud](https://img.shields.io/badge/AWS-S3%20Static%20Hosting-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/s3/)
+[![AWS Cloud](https://img.shields.io/badge/AWS-Amazon%20Location%20Service-FF9900?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/location/)
+[![Hosting](https://img.shields.io/badge/AWS-S3%20%2B%20CloudFront-232F3E?logo=amazon-aws&logoColor=white)](https://aws.amazon.com/s3/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![AI Engine](https://img.shields.io/badge/AI-Gemini%203.1%20Flash--Lite-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
-[![Basemap](https://img.shields.io/badge/Cartography-OpenFreeMap%20Dark-1C2A3A)](https://openfreemap.org/)
+[![Basemap](https://img.shields.io/badge/Cartography-MapLibre%20GL%20v6-22E3FF)](https://maplibre.org/)
+[![Data Source](https://img.shields.io/badge/Data-TeleGeography%20%2B%20USGS-10B981)](https://www.submarinecablemap.com/)
 
 ---
 
 ## 📌 Executive Summary & Purpose
 
-Spatial data reveals critical insights when placed on an interactive map. **TerraPulse** turns live global geoscientific records into an exploratory command center. Rather than a static or disconnected table of numbers, TerraPulse layers real-time **USGS seismic feeds** alongside **Open-Meteo numerical atmospheric forecasts** onto a hardware-accelerated WebGL vector map.
+People often assume the "Cloud" exists in the sky or through wireless satellite constellations. In reality, **over 95% of all intercontinental internet traffic and AWS inter-region data replication** travels through glass fiber-optic tubes resting on the ocean floor—no thicker than a standard garden hose.
 
-Complementing manual cartographic exploration, TerraPulse embeds an **AI Earth Copilot (Gemini 3.1 Flash-Lite)**. Instead of merely answering questions in a side panel, the Copilot translates natural-language queries into safe, structured JSON actions that dynamically manipulate the map camera, filter criteria, and telemetry records.
+**TerraPulse SUBSEA** visualizes this critical, fragile physical substrate:
+* **733 Subsea Cables:** Charted multi-line geometries across Atlantic, Pacific, and Indian Ocean basins with interactive route isolation.
+* **1,928 Coastal Landing Hubs:** Terminal amplifier and power-feed points connecting undersea cables to continental terrestrial dark-fiber backbones.
+* **34+ AWS Cloud Regions:** Official geographic regional centers plotted with regional connectivity context.
+* **Strategic Chokepoint Explorer:** 1-click camera dives into high-density bottlenecks:
+  1. *Bab-el-Mandeb & Red Sea* (16+ cables squeezed into a 20km trench)
+  2. *Strait of Malacca / Singapore* (The Asia-Pacific super-artery)
+  3. *Luzon Strait* (Site of the 2006 Hengchun M7.1 earthquake that severed 8 cables simultaneously)
+* **Undersea Seismic Proximity Radar:** Streaming live USGS earthquake observations and calculating deterministic great-circle distance to the nearest seabed cable geometries using `@turf/turf`.
 
 ---
 
 ## 🏛 Architecture & AWS Integration
 
-TerraPulse is designed specifically for high reliability and strictly conforms to **AWS Academy Learner Lab** constraints ($50 budget guardrail).
+TerraPulse SUBSEA is engineered for production reliability, edge-caching performance, and zero-compute cost leaks.
 
 ```
-                      +-----------------------------------+
-                      |       Public Spatial Feeds        |
-                      |  - USGS Earthquake GeoJSON Feeds  |
-                      |  - Open-Meteo Forecast API        |
-                      +-----------------+-----------------+
-                                        | (HTTPS)
-                                        v
-+---------------------------------------------------------------------------------+
-|                       TerraPulse Single Page Application                        |
-|                                                                                 |
-|  [React 19 + TypeScript + Vite + Tailwind CSS (Orbital Dark Sci-Fi Theme)]      |
-|                                                                                 |
-|  +--------------------+  +----------------------+  +-------------------------+  |
-|  |   MapLibre GL JS   |  | Deterministic Engine |  |  Gemini AI Copilot      |  |
-|  | WebGL Clustering   |  | Statistical Metrics  |  |  Schema Validation      |  |
-|  | OpenFreeMap Dark   |  | Depth & Histograms   |  |  Map Action Dispatcher  |  |
-|  +--------------------+  +----------------------+  +-------------------------+  |
-+---------------------------------------+-----------------------------------------+
-                                        |
-                             (Static Production Build)
-                                        v
-                      +-----------------------------------+
-                      |      Amazon S3 Web Hosting        |
-                      |   - Static SPA Distribution       |
-                      |   - Demo GeoJSON Snapshot Cache   |
-                      |   - Zero-Compute Cost Footprint   |
-                      +-----------------------------------+
++---------------------------------------------------------------------------------------+
+|                                Authoritative Data Sources                             |
+|  - TeleGeography Subsea Cables & Landing Stations (733 Cables / 1,928 Landing Hubs)   |
+|  - USGS Earthquake Hazards Program (Live 24h / 7d / 30d Feeds)                        |
+|  - AWS Global Infrastructure Reference (34+ Cloud Regions)                            |
++-------------------------------------------+-------------------------------------------+
+                                            |
+                                            v
++---------------------------------------------------------------------------------------+
+|                         AWS Serverless Data & Ingestion Pipeline                      |
+|                                                                                       |
+|   [ Amazon EventBridge Scheduler ] ──(Rate: 5 min)──▶ [ AWS Lambda Ingestion ]       |
+|                                                                 │                     |
+|                                                                 v                     |
+|                                                     [ Amazon S3 Private Bucket ]      |
+|                                                     (GeoJSON Snapshot Cache)          |
++-------------------------------------------+-------------------------------------------+
+                                            |
+                                            v
++---------------------------------------------------------------------------------------+
+|                              Amazon CloudFront CDN (HTTPS)                            |
++-------------------------------------------+-------------------------------------------+
+                                            |
+                                            v
++---------------------------------------------------------------------------------------+
+|                    TerraPulse SUBSEA — Single Page Application                         |
+|                                                                                       |
+|  [ React 19 + TypeScript + Vite 8 + Tailwind CSS (Mission Control Dark Void Theme) ]   |
+|                                                                                       |
+|  +--------------------+  +----------------------+  +-------------------------------+  |
+|  |   MapLibre GL v6   |  |     Turf.js Engine   |  |   Command Palette (⌘K)        |  |
+|  | Amazon Location    |  | Deterministic Math   |  | Deterministic Intent Parser   |  |
+|  | Maps v2 Dark Style |  | Point-to-Line Dist   |  | Quick Jump & Search Index     |  |
+|  +--------------------+  +----------------------+  +-------------------------------+  |
++---------------------------------------------------------------------------------------+
 ```
 
-### Why Amazon S3?
-- **Zero Ongoing Compute Leaks:** Eliminates the risk of runaway EC2, NAT Gateway, or database costs within the Learner Lab.
-- **High-Performance Edge Serving:** Delivers minified assets, vector map styles, and static GeoJSON fixtures with sub-second latency.
-- **Genuine AWS Data Service Integration:** Fully meets the challenge criterion for hosting the application and spatial data snapshots on AWS infrastructure.
+### Key AWS Services Used:
+1. **Amazon Location Service (Maps API v2):** Delivers clean, vector/raster basemaps (`color-scheme=Dark`) directly via MapLibre GL JS with API key authorization.
+2. **Amazon Simple Storage Service (S3):** Hosts the static production build and caches immutable GeoJSON snapshots of cable and landing point geometries.
+3. **Amazon CloudFront:** Delivers the web application and cached data assets over HTTPS with global low latency.
+
+---
+
+## 🔬 Scientific Honesty & Proximity Methodology
+
+TerraPulse SUBSEA enforces strict scientific integrity:
+* **Proximity $\neq$ Damage:** A live earthquake within 50 km of a cable does **not** prove the cable is broken. Cable failures depend on seabed turbidity avalanches, fault displacement, and armored casing. Therefore, alerts are explicitly labeled **"Potential Physical Exposure Observation"**, never "Confirmed Cut".
+* **Approximate Charted Paths:** Publicly mapped cable paths represent charted corridors rather than surveyed subsea centimeter-grade coordinates.
+* **Deterministic Math:** Proximity distances are calculated in client code via Turf.js great-circle algorithms from actual USGS epicenter coordinates to vector line segments—zero AI hallucinations or fabricated outages.
 
 ---
 
 ## 🛰 Authoritative Datasets & Attribution
 
-1. **USGS Earthquake Hazards Program (USGS GeoJSON Feeds)**
-   - Feeds utilized: Past Hour, Past 24 Hours, Past 7 Days, Past 30 Days, M4.5+ (7 Days), and Significant (7 Days).
-   - Frequency: Real-time updates refreshed every 60 seconds.
-   - Coordinate validation: Longitude ($X$), Latitude ($Y$), Depth in kilometers ($Z$).
-   - Source: [USGS Earthquake API Documentation](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php).
-
-2. **Open-Meteo Weather Forecast API**
-   - Point weather observations and 7-day model-derived forecasts (temperature, apparent temperature, relative humidity, precipitation, wind speed, wind gusts, weather interpretation codes).
-   - Terms: Non-commercial open access under [CC BY 4.0](https://open-meteo.com/).
-   - Clearly labeled as numerical model forecasts (ECMWF/GFS), not direct ground sensors.
-
-3. **Cartography & Basemap**
-   - **MapLibre GL JS** with **OpenFreeMap Dark Style**.
-   - Vector tiles derived from OpenStreetMap contributors under ODbL.
+1. **Submarine Cable Map:**
+   - 733 international submarine cables & 1,928 coastal landing points.
+   - Sourced under open non-commercial attribution: `Data © TeleGeography (submarinecablemap.com)`.
+2. **USGS Earthquake Hazards Program:**
+   - Real-time GeoJSON feeds (Past 24h, 7d, 30d, M4.5+).
+   - Source: [USGS Earthquakes Feed](https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php).
+3. **AWS Global Infrastructure:**
+   - Official AWS Region locations and launch timelines.
+   - Labeled as approximate metropolitan centers.
+   - Source: [AWS Global Infrastructure](https://aws.amazon.com/about-aws/global-infrastructure/).
 
 ---
 
-## 🤖 Gemini 3.1 Flash-Lite Copilot Implementation
+## 🎬 3-Minute Demo Video Script & Storyboard
 
-The AI Earth Copilot is built with strict safety and scientific integrity guardrails:
+This 3-minute sequence matches our built-in **Story Mode**:
 
-### Strict JSON Action Contract (`MapIntent`)
-```typescript
-type MapIntent = {
-  action: 'filter_earthquakes' | 'focus_region' | 'show_top_events' | 'select_layer' | 'inspect_weather' | 'explain_selected_event' | 'clear_filters';
-  timeRange?: '1h' | '24h' | '7d' | '30d';
-  minMagnitude?: number;
-  region?: string;
-  topN?: number;
-  layer?: 'earthquakes' | 'weather' | 'both';
-  explanation?: string;
-};
-```
-
-### Integrity & Safety Guardrails
-- **Deterministic Statistics:** The AI model is never allowed to fabricate earthquake counts, rankings, or magnitudes. All statistics (averages, distributions, depth classifications) are calculated client-side in TypeScript from actual filtered records.
-- **No Speculative Predictions:** TerraPulse explicitly disclaims earthquake predictions and rejects unsupported causal relationships between weather and seismic events.
-- **Quota & Offline Resilience:** When running without an API key or when the Google Free Tier quota resets, the application seamlessly utilizes an internal deterministic action parser that mirrors the identical MapIntent schema offline.
-- **Secret Protection:** No API keys are ever committed to Git, bundled into static JavaScript, or exposed in public S3 files. Keys are managed privately via browser `localStorage` or server proxy.
+| Time | Visual / Screen Action | Voiceover Narrative |
+| :--- | :--- | :--- |
+| **0:00 - 0:25** | Cinematic globe rotates with glowing cyan cables; camera dives to Atlantic Ocean. | *"We think the Cloud lives in the sky. In reality, over 95% of all global data and AWS inter-region traffic flows through glass fiber cables resting on the dark seabed. Welcome to TerraPulse SUBSEA."* |
+| **0:25 - 0:55** | Clicking **Story Mode** $\rightarrow$ Chapter 2: Luzon Strait (Taiwan/Philippines). | *"On December 26, 2006, an M7.1 earthquake off Taiwan triggered undersea avalanches that severed 8 submarine cables simultaneously, crippling East Asian banking for weeks. This proved the physical vulnerability of our digital world."* |
+| **0:55 - 1:30** | Story Mode Chapter 3: Camera flies to **Bab-el-Mandeb & Red Sea**. | *"Here in the Red Sea, 16 major intercontinental cable systems are squeezed into a waterway just 20 kilometers wide. TerraPulse SUBSEA tracks the route concentration in these critical chokepoints."* |
+| **1:30 - 2:05** | Clicking **Exposure Alert** from the live feed $\rightarrow$ camera flies to an offshore epicenter; dashed proximity line renders to the nearest cable with distance counter in km. | *"Using live USGS streaming feeds, our Turf.js spatial engine calculates the exact distance from offshore epicenters to charted cables. Here, an offshore tremor is flagged as a potential physical exposure observation 34 kilometers from the AAE-1 cable."* |
+| **2:05 - 2:35** | Clicking an **AWS Region** (e.g. `ap-southeast-1` Singapore or `eu-central-1` Frankfurt). | *"We plot 34+ AWS Regions alongside coastal landing stations, demonstrating how cloud infrastructure physically ties into regional subsea landing hubs."* |
+| **2:35 - 3:00** | Pressing `⌘K` to open the Command Palette, searching cables, and showing the Amazon Location Service and S3 hosting architecture slide. | *"TerraPulse SUBSEA runs on Amazon Location Service and Amazon S3 static hosting, delivering sub-second spatial intelligence at zero ongoing compute cost. Check out our live demo and open-source repo."* |
 
 ---
 
-## 🚀 Local Setup & Development
+## 🚀 Local Development & Quickstart
 
-### Prerequisites
-- Node.js 18+ (tested on Node v22)
-- npm 9+
-
-### Quickstart
 ```bash
-# 1. Clone repository
-git clone https://github.com/your-username/terrapulse.git
-cd terrapulse
+# 1. Clone the repository
+git clone https://github.com/your-username/terrapulse-subsea.git
+cd terrapulse-subsea
 
 # 2. Install dependencies
 npm install
@@ -126,65 +133,25 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ```bash
 npm run build
 ```
-This produces a self-contained, optimized static output in `dist/`.
+Generates a self-contained static distribution in `dist/`.
 
 ---
 
-## ☁️ AWS S3 Deployment Guide (Learner Lab Verified)
+## ☁️ AWS S3 & CloudFront Deployment
 
-### Option A: AWS CLI Deployment
 ```bash
-# Set your bucket name
-BUCKET_NAME="terrapulse-map-it-2026"
-
-# 1. Create S3 Bucket (if not created)
-aws s3 mb s3://$BUCKET_NAME --region us-east-1
+# 1. Create S3 Bucket
+aws s3 mb s3://terrapulse-subsea-2026 --region us-east-1
 
 # 2. Enable Static Website Hosting
-aws s3 website s3://$BUCKET_NAME/ --index-document index.html --error-document index.html
+aws s3 website s3://terrapulse-subsea-2026/ --index-document index.html --error-document index.html
 
-# 3. Set Bucket Public Read Policy (if allowed by lab policy)
-aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy '{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublicReadGetObject",
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::'$BUCKET_NAME'/*"
-    }
-  ]
-}'
-
-# 4. Upload production build
-aws s3 sync dist/ s3://$BUCKET_NAME/ --delete
-
-# 5. Access your live application
-echo "Endpoint: http://$BUCKET_NAME.s3-website-us-east-1.amazonaws.com"
+# 3. Sync Production Build
+aws s3 sync dist/ s3://terrapulse-subsea-2026/ --delete
 ```
-
-### Option B: AWS Management Console
-1. Navigate to **S3** in the AWS Console.
-2. Click **Create Bucket**, name it (e.g. `terrapulse-map-it`), choose region, and uncheck *Block Public Access* (if permitted in your lab).
-3. Under **Properties**, enable **Static website hosting** with Index document `index.html`.
-4. Upload all files from the `dist/` directory directly to the bucket root.
-5. Open the provided Static Website Endpoint URL in an incognito window.
-
----
-
-## 🎬 3-Minute Demo Video Storyboard
-
-| Timestamp | Screen Action | Voiceover / Narrative |
-| :--- | :--- | :--- |
-| **0:00 - 0:20** | Live global map on screen with live status pill. | "Welcome to TerraPulse, a map-first global earth intelligence system built on AWS for the Weekend Challenge: Map It." |
-| **0:20 - 0:50** | Interacting with Left Rail: time window (24h to 7d), magnitude slider (M4.5+), clicking an event marker. | "TerraPulse streams authoritative USGS earthquake feeds directly into MapLibre GL. Selecting an epicenter reveals focal depth, magnitude, and canonical USGS links." |
-| **0:50 - 1:20** | Clicking map location / epicenter to open Weather profile. | "By clicking any point, TerraPulse fetches Open-Meteo atmospheric telemetry and a 24-hour forecast to contextualize the local surface conditions." |
-| **1:20 - 2:10** | Opening AI Copilot drawer; typing "Show magnitude 4+ earthquakes from the last 7 days around Japan and highlight the strongest five." | "The Gemini 3.1 Flash-Lite copilot translates natural questions into validated MapIntents. Watch the camera smoothly focus on the Japan Trench and highlight the top 5 seismic events." |
-| **2:10 - 2:35** | Showing bottom telemetry rail with calculated distributions and no hallucinated numbers. | "All analytics in the telemetry strip are computed deterministically in code from actual filtered records, preserving scientific truth." |
-| **2:35 - 3:00** | Showing Amazon S3 hosting architecture and Builder Center write-up summary. | "TerraPulse is deployed directly to Amazon S3 static website hosting, providing a low-cost, high-performance architecture. Check out the code and live demo." |
 
 ---
 
 ## 📄 License
-This project is open source and available under the [MIT License](LICENSE).
+This project is open-source under the [MIT License](LICENSE).
+Submarine cable data © TeleGeography. Seismic feeds courtesy of the U.S. Geological Survey (USGS).
