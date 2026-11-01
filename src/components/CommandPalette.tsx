@@ -56,8 +56,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   // Deduplicate cables and extract unique entries with rich metadata
   const uniqueCables = React.useMemo(() => {
     const map = new Map<string, SubseaCableFeature>();
@@ -126,6 +124,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onSelectChokepoint(chokepoint);
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
