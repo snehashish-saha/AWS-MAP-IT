@@ -1,5 +1,6 @@
 import React from 'react';
-import { Radio, Search, Info, Cloud } from 'lucide-react';
+import { Radio, Search, Info, Cloud, Globe, Map as MapIcon } from 'lucide-react';
+import type { ProjectionMode } from '../types';
 
 interface TopBarProps {
   onOpenCommandPalette: () => void;
@@ -7,6 +8,8 @@ interface TopBarProps {
   isLoadingData: boolean;
   activeFeed: string;
   amazonLocationKey?: string;
+  projection?: ProjectionMode;
+  onToggleProjection?: (mode: ProjectionMode) => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -15,6 +18,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isLoadingData,
   activeFeed,
   amazonLocationKey,
+  projection,
+  onToggleProjection,
 }) => {
   return (
     <header className="fixed top-4 left-6 right-6 z-30 flex items-center justify-between pointer-events-none select-none">
@@ -71,8 +76,28 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
       </div>
 
-      {/* Right: Info / Architecture Modal Action */}
+      {/* Right: Projection Toggle & Info / Architecture Modal Action */}
       <div className="flex items-center gap-2 pointer-events-auto">
+        {onToggleProjection && projection && (
+          <button
+            onClick={() => onToggleProjection(projection === 'globe' ? 'mercator' : 'globe')}
+            className="glass-panel px-3 py-2 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-all border border-white/10 flex items-center gap-2 group"
+            title={`Toggle View (Currently ${projection === 'globe' ? '3D Globe' : '2D Map'})`}
+          >
+            {projection === 'globe' ? (
+              <>
+                <Globe className="w-4 h-4 text-subsea-cyan" />
+                <span className="hidden sm:inline text-xs font-mono font-medium text-subsea-cyan">3D Globe</span>
+              </>
+            ) : (
+              <>
+                <MapIcon className="w-4 h-4 text-subsea-muted group-hover:text-subsea-text" />
+                <span className="hidden sm:inline text-xs font-mono font-medium text-subsea-text">2D Map</span>
+              </>
+            )}
+          </button>
+        )}
+
         <button
           onClick={onOpenInfo}
           className="glass-panel p-2.5 rounded-2xl hover:bg-white/10 text-subsea-muted hover:text-subsea-text transition-colors border border-white/10"

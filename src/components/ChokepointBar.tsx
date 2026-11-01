@@ -1,14 +1,16 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Compass, BookOpen, Anchor } from 'lucide-react';
+import { Compass, BookOpen, Anchor, Globe, Map as MapIcon } from 'lucide-react';
 import { CHOKEPOINT_PRESETS } from '../constants/chokepoints';
-import type { ChokepointPreset } from '../types';
+import type { ChokepointPreset, ProjectionMode } from '../types';
 
 interface ChokepointBarProps {
   activeChokepoint: ChokepointPreset | null;
   onSelectChokepoint: (preset: ChokepointPreset | null) => void;
   onStartStoryMode: () => void;
   isStoryModeActive: boolean;
+  projection: ProjectionMode;
+  onToggleProjection: (mode: ProjectionMode) => void;
 }
 
 export const ChokepointBar: React.FC<ChokepointBarProps> = ({
@@ -16,6 +18,8 @@ export const ChokepointBar: React.FC<ChokepointBarProps> = ({
   onSelectChokepoint,
   onStartStoryMode,
   isStoryModeActive,
+  projection,
+  onToggleProjection,
 }) => {
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center pointer-events-auto max-w-[calc(100vw-2rem)] overflow-x-auto no-scrollbar">
@@ -25,6 +29,36 @@ export const ChokepointBar: React.FC<ChokepointBarProps> = ({
         transition={{ type: 'spring', damping: 25, stiffness: 250 }}
         className="glass-panel p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 border border-white/10 shrink-0"
       >
+        {/* Projection Mode Switcher: 2D Planar vs 3D Orbital Globe */}
+        <div className="flex items-center p-0.5 rounded-xl bg-black/40 border border-white/10 shrink-0">
+          <button
+            onClick={() => onToggleProjection('mercator')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+              projection === 'mercator'
+                ? 'bg-white/15 text-subsea-text shadow-sm'
+                : 'text-subsea-muted hover:text-subsea-text'
+            }`}
+            title="2D Planar Map View"
+          >
+            <MapIcon className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">2D</span>
+          </button>
+          <button
+            onClick={() => onToggleProjection('globe')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              projection === 'globe'
+                ? 'bg-subsea-cyan text-black font-semibold shadow-glow-cyan'
+                : 'text-subsea-muted hover:text-subsea-text'
+            }`}
+            title="3D Interactive Orbital Globe"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">3D Globe</span>
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-white/10 mx-0.5" />
+
         {/* Global Reset */}
         <button
           onClick={() => onSelectChokepoint(null)}

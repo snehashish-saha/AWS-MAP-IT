@@ -201,6 +201,9 @@ export type LayerVisibility = {
   alertsOnly: boolean;
 };
 
+// --- Map Projection Mode ---
+export type ProjectionMode = 'mercator' | 'globe';
+
 // --- Copilot Intent ---
 export type MapIntent = {
   action:

@@ -10,6 +10,8 @@ import {
   Filter,
   Sparkles,
   X,
+  Globe,
+  Map as MapIcon,
 } from 'lucide-react';
 import { CHOKEPOINT_PRESETS } from '../constants/chokepoints';
 import { AWS_REGIONS } from '../constants/awsRegions';
@@ -17,6 +19,7 @@ import type {
   SubseaCableFeature,
   SelectedEntity,
   ChokepointPreset,
+  ProjectionMode,
 } from '../types';
 
 interface CommandPaletteProps {
@@ -27,6 +30,7 @@ interface CommandPaletteProps {
   onSelectChokepoint: (chokepoint: ChokepointPreset | null) => void;
   onStartStoryMode: () => void;
   onFilterAlerts: () => void;
+  onToggleProjection?: (mode: ProjectionMode) => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -37,6 +41,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectChokepoint,
   onStartStoryMode,
   onFilterAlerts,
+  onToggleProjection,
 }) => {
   const [search, setSearch] = useState('');
 
@@ -190,6 +195,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <Compass className="w-4 h-4 text-subsea-cyan" />
                   <span className="font-medium">Reset Camera to Global Perspective</span>
                 </Command.Item>
+
+                {onToggleProjection && (
+                  <>
+                    <Command.Item
+                      onSelect={() => {
+                        onToggleProjection('globe');
+                        onClose();
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-subsea-cyan/20 hover:text-subsea-cyan cursor-pointer transition-colors"
+                    >
+                      <Globe className="w-4 h-4 text-subsea-cyan" />
+                      <span className="font-medium">Switch to 3D Orbital Globe Projection</span>
+                    </Command.Item>
+
+                    <Command.Item
+                      onSelect={() => {
+                        onToggleProjection('mercator');
+                        onClose();
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-subsea-text hover:bg-white/10 hover:text-white cursor-pointer transition-colors"
+                    >
+                      <MapIcon className="w-4 h-4 text-subsea-muted" />
+                      <span className="font-medium">Switch to 2D Planar Map Projection</span>
+                    </Command.Item>
+                  </>
+                )}
               </Command.Group>
             )}
 

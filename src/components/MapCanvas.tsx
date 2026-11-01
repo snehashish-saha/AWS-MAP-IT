@@ -9,6 +9,7 @@ import type {
   LayerVisibility,
   ChokepointPreset,
   StoryStep,
+  ProjectionMode,
 } from '../types';
 import { AWS_REGIONS } from '../constants/awsRegions';
 import { buildProximityVectorGeoJSON } from '../services/proximity';
@@ -31,6 +32,7 @@ interface MapCanvasProps {
   minMagnitude?: number;
   amazonLocationKey?: string;
   amazonLocationRegion?: string;
+  projection?: ProjectionMode;
 }
 
 // Minimalistic deep-ocean dark canvas
@@ -70,6 +72,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   minMagnitude = 4.0,
   amazonLocationKey,
   amazonLocationRegion = 'us-east-1',
+  projection = 'globe',
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -180,6 +183,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
     map.on('load', () => {
       isMapLoaded.current = true;
+      if (projection === 'globe') {
+        try {
+          map.setProjection({ type: 'globe' });
+        } catch (e) {
+          console.warn('Initial globe projection notice:', e);
+        }
+      }
       try {
         initDataLayers(map);
       } catch (e: any) {
@@ -793,6 +803,45 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       map.setFilter('earthquakes-shockwave', ['all', ['==', ['get', 'isAlert'], true], magExpr] as any);
     }
   }, [minMagnitude, layerVisibility.alertsOnly]);
+
+  // Handle Dynamic Map Projection Switch (2D Planar Mercator <-> 3D Orbital Globe)
+  const prevProjectionRef = useRef<ProjectionMode>(projection);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoaded.current) return;
+
+    if (prevProjectionRef.current !== projection) {
+      prevProjectionRef.current = projection;
+
+      try {
+        if (projection === 'globe') {
+          map.setProjection({ type: 'globe' });
+          // Smooth orbital camera transition
+          if (map.getZoom() < 3.5) {
+            map.easeTo({
+              zoom: 1.8,
+              pitch: 25,
+              duration: 1200,
+              essential: true,
+            });
+          }
+        } else {
+          map.setProjection({ type: 'mercator' });
+          if (map.getZoom() < 3.5) {
+            map.easeTo({
+              zoom: 2.2,
+              pitch: 15,
+              duration: 1200,
+              essential: true,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Projection transition notice:', err);
+      }
+    }
+  }, [projection]);
 
   // Handle Camera Movement on Chokepoint or Story Step
   useEffect(() => {

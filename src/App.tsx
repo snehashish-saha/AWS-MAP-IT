@@ -7,6 +7,7 @@ import type {
   LayerVisibility,
   SelectedEntity,
   ChokepointPreset,
+  ProjectionMode,
 } from './types';
 
 import { fetchEarthquakeFeed } from './services/usgs';
@@ -48,6 +49,16 @@ export function App() {
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);
   const [activeChokepoint, setActiveChokepoint] = useState<ChokepointPreset | null>(null);
   const [storyStepIndex, setStoryStepIndex] = useState<number | null>(null);
+  const [projection, setProjection] = useState<ProjectionMode>(() => {
+    return (localStorage.getItem('TERRAPULSE_PROJECTION') as ProjectionMode) || 'globe';
+  });
+
+  const handleToggleProjection = useCallback((mode: ProjectionMode) => {
+    setProjection(mode);
+    try {
+      localStorage.setItem('TERRAPULSE_PROJECTION', mode);
+    } catch {}
+  }, []);
 
   // Modals & Panels State
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
@@ -230,6 +241,7 @@ export function App() {
           minMagnitude={minMagnitude}
           amazonLocationKey={amazonLocationKey}
           amazonLocationRegion={amazonLocationRegion}
+          projection={projection}
         />
       </div>
 
@@ -243,6 +255,8 @@ export function App() {
         isLoadingData={isLoadingData}
         activeFeed={activeFeed}
         amazonLocationKey={amazonLocationKey}
+        projection={projection}
+        onToggleProjection={handleToggleProjection}
       />
 
       {/* 3. Subsea Intelligence Console (Collapsible Mission Control Drawer) */}
@@ -276,6 +290,8 @@ export function App() {
         onSelectChokepoint={handleSelectChokepoint}
         onStartStoryMode={handleStartStoryMode}
         isStoryModeActive={storyStepIndex !== null}
+        projection={projection}
+        onToggleProjection={handleToggleProjection}
       />
 
       {/* 6. Story Mode Guided Tour Overlay */}
@@ -303,6 +319,7 @@ export function App() {
         onSelectChokepoint={handleSelectChokepoint}
         onStartStoryMode={handleStartStoryMode}
         onFilterAlerts={() => setLayerVisibility((p) => ({ ...p, alertsOnly: true }))}
+        onToggleProjection={handleToggleProjection}
       />
 
       {/* 9. Methodology & Attribution Modal */}
