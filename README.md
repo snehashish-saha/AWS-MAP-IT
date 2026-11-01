@@ -119,7 +119,7 @@ This 3-minute sequence matches our built-in **Story Mode**:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-username/terrapulse-subsea.git
+git clone https://github.com/snehashish-saha/AWS-MAP-IT.git
 cd terrapulse-subsea
 
 # 2. Install dependencies

@@ -3,7 +3,7 @@
 > **Submission for the AWS Weekend Challenge: Map It**  
 > *Category: Creative & Useful Map Applications powered by Amazon Location Service*  
 > **Live Application:** [https://terrapulse-subsea.cloudfront.net](https://d3v3lop3r.cloudfront.net) *(Deploy URL)*  
-> **Source Code:** [https://github.com/snehasish-creator/terrapulse-subsea](https://github.com/snehasish-creator/terrapulse-subsea)  
+> **Source Code:** [https://github.com/snehashish-saha/AWS-MAP-IT](https://github.com/snehashish-saha/AWS-MAP-IT)  
 > **Demo Video (2:30):** [https://youtu.be/terrapulse-subsea-demo](https://youtu.be/terrapulse-subsea-demo)
 
 ---
