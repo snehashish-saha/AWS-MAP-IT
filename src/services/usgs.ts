@@ -1,17 +1,30 @@
 import type { EarthquakeFeature, EarthquakeFeatureCollection, FeedType, TelemetryMetrics } from '../types';
 import { USGS_FEEDS } from '../constants/feeds';
 
-// Short in-memory cache to prevent excessive requests
+// Dynamic TTL per feed type: USGS publishes 24h updates every ~60 seconds
+const CACHE_TTL_MS: Record<FeedType, number> = {
+  '1h': 60 * 1000,
+  '24h': 60 * 1000,              // 1 minute for live real-time stream
+  '7d': 5 * 60 * 1000,           // 5 minutes
+  '30d': 10 * 60 * 1000,         // 10 minutes
+  '4.5_week': 5 * 60 * 1000,
+  'significant_week': 5 * 60 * 1000,
+};
+
 const feedCache = new Map<string, { data: EarthquakeFeatureCollection; timestamp: number }>();
 const inFlightRequests = new Map<string, Promise<EarthquakeFeatureCollection>>();
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes in-memory cache
 
-export async function fetchEarthquakeFeed(feedType: FeedType, signal?: AbortSignal): Promise<EarthquakeFeatureCollection> {
+export async function fetchEarthquakeFeed(
+  feedType: FeedType,
+  signal?: AbortSignal,
+  forceRefresh = false
+): Promise<EarthquakeFeatureCollection> {
   const config = USGS_FEEDS[feedType] || USGS_FEEDS['24h'];
   const cacheKey = config.id;
+  const ttl = CACHE_TTL_MS[feedType] ?? 60 * 1000;
   
   const cached = feedCache.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+  if (!forceRefresh && cached && (Date.now() - cached.timestamp < ttl)) {
     return cached.data;
   }
 

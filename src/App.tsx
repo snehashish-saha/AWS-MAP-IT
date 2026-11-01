@@ -84,21 +84,22 @@ export function App() {
   }, []);
 
   // Load USGS Live Feeds
-  const loadFeed = useCallback(async (feed: FeedType) => {
-    setIsLoadingData(true);
+  const loadFeed = useCallback(async (feed: FeedType, force = false, showSpinner = true) => {
+    if (showSpinner) setIsLoadingData(true);
     try {
-      const quakes = await fetchEarthquakeFeed(feed);
+      const quakes = await fetchEarthquakeFeed(feed, undefined, force);
       setEarthquakesData(quakes);
     } catch (err) {
       console.error('Failed loading USGS feed:', err);
     } finally {
-      setIsLoadingData(false);
+      if (showSpinner) setIsLoadingData(false);
     }
   }, []);
 
   useEffect(() => {
     loadFeed(activeFeed);
-    const interval = setInterval(() => loadFeed(activeFeed), 120000); // 2 min refresh
+    // Auto-refresh: Poll for new USGS earthquakes every 60 seconds seamlessly without interrupting UI
+    const interval = setInterval(() => loadFeed(activeFeed, true, false), 60000);
     return () => clearInterval(interval);
   }, [activeFeed, loadFeed]);
 
