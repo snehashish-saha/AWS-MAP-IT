@@ -24,7 +24,7 @@ export const InsightCard: React.FC<InsightCardProps> = ({ selectedEntity, onClos
   return (
     <AnimatePresence>
       <motion.div
-        key={selectedEntity.type + (selectedEntity.data as any).id}
+        key={selectedEntity.type + ((selectedEntity.data as any).id || (selectedEntity.data as any).properties?.id || 'selected')}
         initial={{ opacity: 0, x: 24, scale: 0.98 }}
         animate={{ opacity: 1, x: 0, scale: 1 }}
         exit={{ opacity: 0, x: 24, scale: 0.98 }}
@@ -314,7 +314,7 @@ export const InsightCard: React.FC<InsightCardProps> = ({ selectedEntity, onClos
               <div className="p-2.5 rounded-lg bg-black/30 border border-white/5">
                 <div className="text-subsea-muted">Focal Depth</div>
                 <div className="text-sm font-mono font-bold text-subsea-text mt-0.5">
-                  {formatFocalDepth(selectedEntity.data.geometry.coordinates[2])}
+                  {formatFocalDepth(selectedEntity.data.geometry.coordinates[2] ?? 10)}
                 </div>
               </div>
             </div>

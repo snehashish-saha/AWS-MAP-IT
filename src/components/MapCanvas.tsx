@@ -82,6 +82,17 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   const landingPointsDataRef = useRef(landingPointsData);
   landingPointsDataRef.current = landingPointsData;
 
+  const earthquakesRef = useRef(earthquakes);
+  earthquakesRef.current = earthquakes;
+  (window as any).__earthquakes = earthquakes;
+
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
+  (window as any).__alerts = alerts;
+
+  const onSelectEntityRef = useRef(onSelectEntity);
+  onSelectEntityRef.current = onSelectEntity;
+
   // GeoJSON for AWS Regions
   const awsRegionsGeoJSON = useMemo(() => {
     return {
@@ -156,6 +167,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     });
 
     mapRef.current = map;
+    (window as any).__mapInstance = map;
 
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
@@ -409,18 +421,18 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
               'interpolate',
               ['linear'],
               ['coalesce', ['get', 'mag'], 2],
-              2, 4,
-              5, 12,
-              8, 28
+              2, 8,
+              5, 18,
+              8, 36
             ],
             'circle-color': '#FFB020',
             'circle-opacity': [
               'case',
               ['==', ['get', 'isAlert'], true],
-              0.35,
+              0.4,
               0
             ],
-            'circle-blur': 0.5,
+            'circle-blur': 0.4,
           },
         });
 
@@ -437,22 +449,22 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
                 'interpolate',
                 ['linear'],
                 ['coalesce', ['get', 'mag'], 2],
-                2, 3.0,
-                5, 6.0,
-                8, 10.0
+                2, 4.0,
+                5, 7.5,
+                8, 12.0
               ],
-              2.0 // Quiet 2px dot for non-alert/inland tremors
+              2.5 // Quiet dot for non-alert/inland tremors
             ],
             'circle-color': [
               'case',
               ['==', ['get', 'isAlert'], true],
               '#FFB020', // Alert: Vivid Amber
-              '#64748B'  // Inland/Non-alert: Quiet slate gray (no false alarm red)
+              '#64748B'  // Inland/Non-alert: Quiet slate gray
             ],
             'circle-stroke-width': [
               'case',
               ['==', ['get', 'isAlert'], true],
-              1.5,
+              2.0,
               0.5
             ],
             'circle-stroke-color': [
@@ -464,19 +476,19 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
             'circle-opacity': [
               'case',
               ['==', ['get', 'isAlert'], true],
-              0.95,
-              0.35
+              1.0,
+              0.4
             ],
           },
         });
 
-        // Generous transparent circular hitbox (18px) for effortless clicking on quake points
+        // Generous transparent circular hitbox (22px) for effortless clicking on quake points
         map.addLayer({
           id: 'earthquakes-hitbox',
           type: 'circle',
           source: 'earthquakes',
           paint: {
-            'circle-radius': 18,
+            'circle-radius': 22,
             'circle-color': '#FFFFFF',
             'circle-opacity': 0.001,
           },
@@ -495,7 +507,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       if (!e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const props = feat.properties as any;
-      onSelectEntity({
+      onSelectEntityRef.current({
         type: 'cable',
         data: {
           id: props.id,
@@ -514,24 +526,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     map.on('click', 'cables-hitbox', handleCableClick);
     map.on('click', 'cables-line', handleCableClick);
 
-    const handleCableEnter = () => {
-      map.getCanvas().style.cursor = 'pointer';
-    };
-    const handleCableLeave = () => {
-      map.getCanvas().style.cursor = '';
-    };
-
-    map.on('mouseenter', 'cables-hitbox', handleCableEnter);
-    map.on('mouseleave', 'cables-hitbox', handleCableLeave);
-    map.on('mouseenter', 'cables-line', handleCableEnter);
-    map.on('mouseleave', 'cables-line', handleCableLeave);
-
     // Click on Landing Point
     map.on('click', 'landing-points-circle', (e) => {
       if (!e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const props = feat.properties as any;
-      onSelectEntity({
+      onSelectEntityRef.current({
         type: 'landing_point',
         data: {
           id: props.id,
@@ -540,19 +540,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     });
 
-    map.on('mouseenter', 'landing-points-circle', () => {
-      map.getCanvas().style.cursor = 'pointer';
-    });
-    map.on('mouseleave', 'landing-points-circle', () => {
-      map.getCanvas().style.cursor = '';
-    });
-
     // Click on AWS Region
     map.on('click', 'aws-regions-core', (e) => {
       if (!e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const props = feat.properties as any;
-      onSelectEntity({
+      onSelectEntityRef.current({
         type: 'aws_region',
         data: {
           id: props.id,
@@ -566,49 +559,136 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     });
 
-    map.on('mouseenter', 'aws-regions-core', () => {
-      map.getCanvas().style.cursor = 'pointer';
-    });
-    map.on('mouseleave', 'aws-regions-core', () => {
-      map.getCanvas().style.cursor = '';
-    });
-
-    // Click on Earthquake (bound to both generous 18px hitbox and visual core)
-    const handleQuakeClick = (e: maplibregl.MapLayerMouseEvent) => {
+    // Click on Earthquake or Proximity Vector
+    const handleQuakeClick = (e: maplibregl.MapLayerMouseEvent | { features?: maplibregl.MapGeoJSONFeature[] }) => {
       if (!e.features || e.features.length === 0) return;
       const feat = e.features[0];
       const qId = feat.id || (feat.properties as any)?.id;
-      const eqMatch = earthquakes.find((eq) => eq.id === qId || String(eq.id) === String(qId));
-      if (eqMatch) {
-        const alertMatch = alerts.find((a) => a.earthquake.id === eqMatch.id || String(a.earthquake.id) === String(eqMatch.id));
-        if (alertMatch) {
-          onSelectEntity({
+      const currentQuakes = earthquakesRef.current;
+      const currentAlerts = alertsRef.current;
+
+      // 1. Direct match on active exposure alert
+      const alertMatch = currentAlerts.find(
+        (a) =>
+          a.earthquake.id === qId ||
+          String(a.earthquake.id) === String(qId) ||
+          a.id === qId ||
+          String(a.id) === String(qId)
+      );
+
+      if (alertMatch) {
+        onSelectEntityRef.current({
+          type: 'exposure_alert',
+          data: alertMatch,
+        });
+        return;
+      }
+
+      // 2. Clicked on proximity vector line
+      if (feat.properties?.cableName || feat.properties?.distanceKm) {
+        const lineAlert = currentAlerts.find(
+          (a) =>
+            a.id === qId ||
+            String(a.id) === String(qId) ||
+            a.distanceKm === feat.properties?.distanceKm ||
+            a.nearestCable.name === feat.properties?.cableName
+        );
+        if (lineAlert) {
+          onSelectEntityRef.current({
             type: 'exposure_alert',
-            data: alertMatch,
+            data: lineAlert,
           });
-        } else {
-          onSelectEntity({
-            type: 'earthquake',
-            data: eqMatch,
-          });
+          return;
         }
+      }
+
+      // 3. Match in latest earthquakes list
+      const eqMatch = currentQuakes.find(
+        (eq) => eq.id === qId || String(eq.id) === String(qId)
+      );
+
+      if (eqMatch) {
+        onSelectEntityRef.current({
+          type: 'earthquake',
+          data: eqMatch,
+        });
+        return;
+      }
+
+      // 4. Reliable fallback from MapLibre feature data if point
+      if (feat.geometry.type === 'Point') {
+        const coords = feat.geometry.coordinates as [number, number];
+        const props = (feat.properties || {}) as any;
+        onSelectEntityRef.current({
+          type: 'earthquake',
+          data: {
+            type: 'Feature',
+            id: qId || `quake-${Date.now()}`,
+            geometry: {
+              type: 'Point',
+              coordinates: [coords[0], coords[1], props.depth ?? 10],
+            },
+            properties: props,
+          },
+        });
       }
     };
 
-    map.on('click', 'earthquakes-hitbox', handleQuakeClick);
-    map.on('click', 'earthquakes-core', handleQuakeClick);
+    map.on('click', 'earthquakes-hitbox', handleQuakeClick as any);
+    map.on('click', 'earthquakes-core', handleQuakeClick as any);
+    map.on('click', 'earthquakes-shockwave', handleQuakeClick as any);
+    map.on('click', 'proximity-vectors-line', handleQuakeClick as any);
 
-    const handleQuakeEnter = () => {
-      map.getCanvas().style.cursor = 'pointer';
-    };
-    const handleQuakeLeave = () => {
-      map.getCanvas().style.cursor = '';
-    };
+    // Generous bounding-box map click (18px radius) guarantees instant capture even on fast or slightly off-center clicks
+    map.on('click', (e) => {
+      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - 18, e.point.y - 18],
+        [e.point.x + 18, e.point.y + 18],
+      ];
 
-    map.on('mouseenter', 'earthquakes-hitbox', handleQuakeEnter);
-    map.on('mouseleave', 'earthquakes-hitbox', handleQuakeLeave);
-    map.on('mouseenter', 'earthquakes-core', handleQuakeEnter);
-    map.on('mouseleave', 'earthquakes-core', handleQuakeLeave);
+      const quakeFeatures = map.queryRenderedFeatures(bbox, {
+        layers: [
+          'earthquakes-hitbox',
+          'earthquakes-core',
+          'earthquakes-shockwave',
+          'proximity-vectors-line',
+        ].filter((id) => !!map.getLayer(id)),
+      });
+
+      if (quakeFeatures && quakeFeatures.length > 0) {
+        handleQuakeClick({ ...e, features: quakeFeatures } as any);
+        return;
+      }
+
+      const cableFeatures = map.queryRenderedFeatures(bbox, {
+        layers: ['cables-hitbox', 'cables-line'].filter((id) => !!map.getLayer(id)),
+      });
+
+      if (cableFeatures && cableFeatures.length > 0) {
+        handleCableClick({ ...e, features: cableFeatures } as any);
+      }
+    });
+
+    // Unified cursor handling for all interactive elements
+    map.on('mousemove', (e) => {
+      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - 12, e.point.y - 12],
+        [e.point.x + 12, e.point.y + 12],
+      ];
+      const interactiveFeatures = map.queryRenderedFeatures(bbox, {
+        layers: [
+          'earthquakes-hitbox',
+          'earthquakes-core',
+          'earthquakes-shockwave',
+          'proximity-vectors-line',
+          'cables-hitbox',
+          'cables-line',
+          'landing-points-circle',
+          'aws-regions-core',
+        ].filter((id) => !!map.getLayer(id)),
+      });
+      map.getCanvas().style.cursor = interactiveFeatures.length > 0 ? 'pointer' : '';
+    });
   };
 
   // Sync Dynamic Data Updates
@@ -752,6 +832,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         zoom: 7.2,
         pitch: 40,
         bearing: -15,
+        essential: true,
+        duration: 1800,
+      });
+    } else if (selectedEntity.type === 'earthquake') {
+      const [lng, lat] = selectedEntity.data.geometry.coordinates;
+      map.flyTo({
+        center: [lng, lat],
+        zoom: 7.0,
+        pitch: 35,
+        bearing: -10,
         essential: true,
         duration: 1800,
       });
