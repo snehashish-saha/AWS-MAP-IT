@@ -17,7 +17,7 @@ export const BottomMetaStrip: React.FC<BottomMetaStripProps> = ({ onOpenInfo }) 
         <span className="text-white/30">·</span>
         <span className="text-subsea-text/80 font-medium">USGS</span>
         <span className="text-white/30">·</span>
-        <span className="text-subsea-text/80 font-medium">Amazon Location</span>
+        <span className="text-subsea-text/80 font-medium">MapLibre</span>
       </button>
     </footer>
   );

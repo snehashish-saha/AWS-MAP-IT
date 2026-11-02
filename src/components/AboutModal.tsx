@@ -57,7 +57,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
             </p>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                <strong>Distance $\neq$ Damage:</strong> An offshore tremor near a cable does not automatically break the glass fiber. Cable failure depends on sediment displacement, turbidity mudslides, fault ruptures, and armored casing.
+                <strong>Distance ≠ Damage:</strong> An offshore tremor near a cable does not automatically break the glass fiber. Cable failure depends on sediment displacement, turbidity mudslides, fault ruptures, and armored casing.
               </li>
               <li>
                 <strong>Approximate Geometries:</strong> Public charted cable paths represent surveyed route corridors, not exact centimeter-grade seabed coordinates.
@@ -72,20 +72,22 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-sm font-semibold text-subsea-text">
               <Cloud className="w-4 h-4 text-subsea-purple" />
-              AWS Cloud Architecture
+              AWS Cloud Deployment & Infrastructure
             </div>
-            <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3 font-mono text-[11px]">
+            <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2 font-mono text-[11px]">
               <div className="text-subsea-cyan">
-                EventBridge Scheduler (Rate: 5m) ──▶ AWS Lambda Ingestion ──▶ S3 Bucket Cache
+                AWS Amplify (Live Hosting & Continuous Deployment)
               </div>
               <div className="text-subsea-muted">
-                │
+                ├── 28 AWS Cloud Regions (Geospatial Connectivity & Landing Context)
                 <br />
-                └──▶ Amazon CloudFront (HTTPS CDN) ──▶ MapLibre GL JS + Amazon Location Maps v2
+                ├── Client-Side Spatial Engine (MapLibre GL + Turf.js Grid Indexing)
+                <br />
+                └── Reference AWS SAM Template (EventBridge → Lambda → S3 in repo)
               </div>
             </div>
             <p>
-              The application leverages <strong>Amazon Location Service</strong> for vector/raster basemaps, <strong>Amazon S3</strong> for static hosting and dataset snapshots, and follows AWS Learner Lab budget guardrails ($0 compute leaks).
+              Hosted and deployed on <strong>AWS Amplify</strong> with automated CI/CD from GitHub. The repository also includes a reference <strong>AWS SAM template</strong> (<code>backend/template.yaml</code>) for an EventBridge-scheduled Lambda function caching seismic feeds to Amazon S3.
             </p>
           </div>
 
